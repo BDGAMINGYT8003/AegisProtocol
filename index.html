@@ -528,22 +528,24 @@
 
 /* Code Blocks (pre > code) */
 .response-content pre {
-    background-color: #282c34; /* Dark background for code blocks, common choice */
-    color: #abb2bf;            /* Light text color for dark background */
+    background-color: #f8f9fa; /* Light background for better visibility */
+    color: #212529;            /* Dark text for good contrast */
+    border: 1px solid #e9ecef; /* Light border */
     padding: 1em;
-    /* Was: margin-bottom: 1em; */
     margin-top: 0.75em;
     margin-bottom: 0.75em;
     border-radius: 8px;        /* Rounded corners */
     overflow-x: auto;          /* Horizontal scroll for long lines */
     box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
 }
 .response-content pre code {
     background-color: transparent; /* Reset inline code background */
     padding: 0;                   /* Reset inline code padding */
     font-size: 0.875em;        /* Consistent font size in code block */
     line-height: 1.5;           /* Line height for code */
-    /* color is inherited from pre */
+    color: #212529;            /* Ensure text is visible */
+    font-family: inherit;      /* Use monospace font */
 }
 
 /* Tables (Basic Styling) */
