@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Gemini Search Interface</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&family=Poppins:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    
+    <!-- Enhanced Markdown and Syntax Highlighting -->
+    <script src="https://cdn.jsdelivr.net/npm/markdown-it@13.0.2/dist/markdown-it.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/markdown-it-attrs@4.1.6/dist/markdown-it-attrs.browser.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/typescript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/css.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/html.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/json.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/sql.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+    
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Search Interface (Default State) -->
+        <div id="search-interface" class="search-interface">
+            <div class="main-content">
+                <div class="logo">
+                    <span class="char-g1">G</span>
+                    <span class="char-o1">o</span>
+                    <span class="char-o2">o</span>
+                    <span class="char-g2">g</span>
+                    <span class="char-l">l</span>
+                    <span class="char-e">e</span>
+                </div>
+
+                <div class="search-container">
+                    <div class="search-input-area">
+                        <div class="ask-anything-text" contenteditable="true" data-placeholder="Ask anything"></div>
+                    </div>
+                    <div class="search-actions-area">
+                        <div class="action-buttons-left">
+                            <button class="action-button" id="upload-button">
+                                <i class="fas fa-paperclip"></i>
+                                <span class="button-text">Upload</span>
+                            </button>
+                            <button class="action-button" id="image-button">
+                                <i class="fas fa-image"></i>
+                                <span class="button-text">Image</span>
+                            </button>
+                            <button class="action-button" id="mic-button">
+                                <i class="fas fa-microphone"></i>
+                                <span class="button-text">Mic</span>
+                            </button>
+                        </div>
+                        <div class="action-buttons-right">
+                            <button class="model-selector">
+                                Gemini <i class="fas fa-chevron-down"></i>
+                            </button>
+                            <button class="send-button" id="send-button">
+                                <i class="fas fa-arrow-up"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <a href="#" class="legacy-search-link">Use legacy Google Search</a>
+            </div>
+        </div>
+
+        <!-- Conversation Interface (Hidden by default) -->
+        <div id="conversation-interface" class="conversation-interface" style="display: none;">
+            <div class="conversation-header">
+                <div class="header-left">
+                    <button class="new-chat-button" id="new-chat-button">
+                        <i class="fas fa-plus"></i>
+                        <span>New chat</span>
+                    </button>
+                </div>
+                <div class="header-center">
+                    <div class="logo-small">
+                        <span class="char-g1">G</span>
+                        <span class="char-o1">o</span>
+                        <span class="char-o2">o</span>
+                        <span class="char-g2">g</span>
+                        <span class="char-l">l</span>
+                        <span class="char-e">e</span>
+                    </div>
+                </div>
+                <div class="header-right">
+                    <button class="header-action-button">
+                        <i class="fas fa-share"></i>
+                    </button>
+                    <button class="header-action-button">
+                        <i class="fas fa-ellipsis-v"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="conversation-content" id="conversation-content">
+                <!-- Messages will be dynamically inserted here -->
+            </div>
+
+            <div class="conversation-input-container">
+                <div class="conversation-input-wrapper">
+                    <div class="conversation-input" contenteditable="true" data-placeholder="Message Gemini..."></div>
+                    <div class="conversation-actions">
+                        <button class="conversation-action-button" id="conversation-upload">
+                            <i class="fas fa-paperclip"></i>
+                        </button>
+                        <button class="conversation-action-button" id="conversation-image">
+                            <i class="fas fa-image"></i>
+                        </button>
+                        <button class="conversation-action-button" id="conversation-mic">
+                            <i class="fas fa-microphone"></i>
+                        </button>
+                        <button class="conversation-send-button" id="conversation-send">
+                            <i class="fas fa-arrow-up"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading overlay -->
+    <div id="loading-overlay" class="loading-overlay" style="display: none;">
+        <div class="loading-content">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">Generating response...</div>
+        </div>
+    </div>
+
+    <!-- File input for uploads (hidden) -->
+    <input type="file" id="file-input" style="display: none;" accept="image/*,.pdf,.txt,.doc,.docx">
+
+    <script src="script.js"></script>
+</body>
+</html>
