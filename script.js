@@ -1,655 +1,468 @@
-// Enhanced Gemini AI Interface with Professional Markdown Rendering
-class GeminiInterface {
-    constructor() {
-        this.apiKey = this.getApiKey();
-        this.currentConversation = [];
-        this.isLoading = false;
-        
-        this.initializeMarkdownParser();
-        this.bindEvents();
-        this.initializeFileUpload();
+let isSearchModeActive = false;
+// Removed: attachedImageBase64, attachedImageMimeType, fullDataUrlForPreview
+let currentImageData = null; // Will store { mimeType, base64Data, dataURLForPreview }
+let currentModelId = "gemini-2.5-flash-preview-05-20"; // Default model
+const availableModels = [
+    {
+        id: "gemini-2.5-flash-preview-05-20",
+        label: "Gemini 2.5 Flash",
+        capabilities: { think: true, search: true, attach: true }
+    },
+    {
+        id: "gemini-2.0-flash",
+        label: "Gemini 2.0 Flash",
+        capabilities: { think: false, search: true, attach: true }
+    },
+    {
+        id: "gemini-2.0-flash-lite",
+        label: "Gemini 2.0 Flash-Lite",
+        capabilities: { think: false, search: false, attach: true }
     }
-
-    getApiKey() {
-        // Get API key from environment variables with fallback
-        const apiKey = typeof process !== 'undefined' && process.env 
-            ? process.env.GEMINI_API_KEY 
-            : localStorage.getItem('gemini_api_key') || 'default_gemini_key';
-        
-        return apiKey;
-    }
-
-    initializeMarkdownParser() {
-        // Initialize markdown-it with enhanced features
-        this.md = window.markdownit({
-            html: true,
-            linkify: true,
-            typographer: true,
-            breaks: true,
-            highlight: (str, lang) => {
-                if (lang && hljs.getLanguage(lang)) {
-                    try {
-                        const highlighted = hljs.highlight(str, { language: lang }).value;
-                        return `<div class="code-block-wrapper">
-                                    <div class="code-block-language">${lang}</div>
-                                    <button class="code-block-copy" onclick="copyToClipboard(this)" data-code="${encodeURIComponent(str)}">
-                                        <i class="fas fa-copy"></i>
-                                    </button>
-                                    <pre><code class="hljs">${highlighted}</code></pre>
-                                </div>`;
-                    } catch (__) {}
-                }
-                return `<div class="code-block-wrapper">
-                            <button class="code-block-copy" onclick="copyToClipboard(this)" data-code="${encodeURIComponent(str)}">
-                                <i class="fas fa-copy"></i>
-                            </button>
-                            <pre><code>${this.md.utils.escapeHtml(str)}</code></pre>
-                        </div>`;
-            }
-        });
-
-        // Add additional plugins if available
-        if (window.markdownitAttrs) {
-            this.md.use(window.markdownitAttrs);
-        }
-    }
-
-    bindEvents() {
-        // Search interface events
-        this.bindSearchEvents();
-        
-        // Conversation interface events
-        this.bindConversationEvents();
-        
-        // Global events
-        this.bindGlobalEvents();
-    }
-
-    bindSearchEvents() {
-        const searchInput = document.querySelector('.ask-anything-text');
-        const sendButton = document.getElementById('send-button');
-        
-        // Send button click
-        sendButton.addEventListener('click', () => this.handleSearchSubmit());
-        
-        // Enter key in search input
-        searchInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                this.handleSearchSubmit();
-            }
-        });
-
-        // Input validation
-        searchInput.addEventListener('input', () => {
-            const hasContent = searchInput.textContent.trim().length > 0;
-            sendButton.disabled = !hasContent || this.isLoading;
-        });
-
-        // Action buttons
-        document.getElementById('upload-button').addEventListener('click', () => this.handleFileUpload());
-        document.getElementById('image-button').addEventListener('click', () => this.handleImageUpload());
-        document.getElementById('mic-button').addEventListener('click', () => this.handleVoiceInput());
-    }
-
-    bindConversationEvents() {
-        const conversationInput = document.querySelector('.conversation-input');
-        const conversationSend = document.getElementById('conversation-send');
-        const newChatButton = document.getElementById('new-chat-button');
-        
-        // Send button click
-        conversationSend?.addEventListener('click', () => this.handleConversationSubmit());
-        
-        // Enter key in conversation input
-        conversationInput?.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                this.handleConversationSubmit();
-            }
-        });
-
-        // Input validation
-        conversationInput?.addEventListener('input', () => {
-            const hasContent = conversationInput.textContent.trim().length > 0;
-            if (conversationSend) {
-                conversationSend.disabled = !hasContent || this.isLoading;
-            }
-        });
-
-        // New chat button
-        newChatButton?.addEventListener('click', () => this.startNewChat());
-
-        // Conversation action buttons
-        document.getElementById('conversation-upload')?.addEventListener('click', () => this.handleFileUpload());
-        document.getElementById('conversation-image')?.addEventListener('click', () => this.handleImageUpload());
-        document.getElementById('conversation-mic')?.addEventListener('click', () => this.handleVoiceInput());
-    }
-
-    bindGlobalEvents() {
-        // Ripple effects
-        this.addRippleEffects();
-        
-        // Window resize
-        window.addEventListener('resize', () => this.handleResize());
-    }
-
-    initializeFileUpload() {
-        const fileInput = document.getElementById('file-input');
-        fileInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                this.processFile(file);
-            }
-        });
-    }
-
-    async handleSearchSubmit() {
-        const searchInput = document.querySelector('.ask-anything-text');
-        const query = searchInput.textContent.trim();
-        
-        if (!query || this.isLoading) return;
-
-        // Clear search input
-        searchInput.textContent = '';
-        
-        // Switch to conversation interface
-        this.switchToConversation();
-        
-        // Add user message
-        this.addMessage('user', query);
-        
-        // Get AI response
-        await this.getAIResponse(query);
-    }
-
-    async handleConversationSubmit() {
-        const conversationInput = document.querySelector('.conversation-input');
-        const query = conversationInput.textContent.trim();
-        
-        if (!query || this.isLoading) return;
-
-        // Clear conversation input
-        conversationInput.textContent = '';
-        
-        // Add user message
-        this.addMessage('user', query);
-        
-        // Get AI response
-        await this.getAIResponse(query);
-    }
-
-    switchToConversation() {
-        const searchInterface = document.getElementById('search-interface');
-        const conversationInterface = document.getElementById('conversation-interface');
-        
-        searchInterface.style.display = 'none';
-        conversationInterface.style.display = 'flex';
-    }
-
-    switchToSearch() {
-        const searchInterface = document.getElementById('search-interface');
-        const conversationInterface = document.getElementById('conversation-interface');
-        
-        conversationInterface.style.display = 'none';
-        searchInterface.style.display = 'flex';
-    }
-
-    startNewChat() {
-        this.currentConversation = [];
-        document.getElementById('conversation-content').innerHTML = '';
-        this.switchToSearch();
-    }
-
-    addMessage(type, content, isMarkdown = false) {
-        const conversationContent = document.getElementById('conversation-content');
-        const messageElement = document.createElement('div');
-        messageElement.className = `message ${type}`;
-
-        const avatar = document.createElement('div');
-        avatar.className = 'message-avatar';
-        avatar.textContent = type === 'user' ? 'U' : 'G';
-
-        const messageContent = document.createElement('div');
-        messageContent.className = 'message-content';
-
-        if (type === 'user') {
-            messageContent.textContent = content;
-        } else {
-            if (isMarkdown) {
-                messageContent.innerHTML = `<div class="markdown-content">${this.renderMarkdown(content)}</div>`;
-            } else {
-                messageContent.innerHTML = `<div class="markdown-content">${content}</div>`;
-            }
-        }
-
-        messageElement.appendChild(avatar);
-        messageElement.appendChild(messageContent);
-        conversationContent.appendChild(messageElement);
-
-        // Store in conversation history
-        this.currentConversation.push({ type, content });
-
-        // Scroll to bottom
-        this.scrollToBottom();
-
-        // Highlight code blocks
-        if (type === 'assistant' && isMarkdown) {
-            this.highlightCodeBlocks(messageElement);
-        }
-    }
-
-    renderMarkdown(content) {
-        try {
-            return this.md.render(content);
-        } catch (error) {
-            console.error('Markdown rendering error:', error);
-            return this.md.utils.escapeHtml(content);
-        }
-    }
-
-    highlightCodeBlocks(element) {
-        const codeBlocks = element.querySelectorAll('pre code:not(.hljs)');
-        codeBlocks.forEach(block => {
-            hljs.highlightElement(block);
-        });
-    }
-
-    async getAIResponse(query) {
-        this.setLoading(true);
-
-        try {
-            // Add typing indicator
-            const typingElement = this.addTypingIndicator();
-
-            // Simulate API call with enhanced response
-            const response = await this.callGeminiAPI(query);
-            
-            // Remove typing indicator
-            typingElement.remove();
-            
-            // Add AI response with markdown rendering
-            this.addMessage('assistant', response, true);
-            
-        } catch (error) {
-            console.error('API Error:', error);
-            this.addMessage('assistant', 'Sorry, I encountered an error while processing your request. Please try again.', false);
-        } finally {
-            this.setLoading(false);
-        }
-    }
-
-    async callGeminiAPI(query) {
-        // Construct conversation context
-        const conversationContext = this.currentConversation
-            .map(msg => `${msg.type === 'user' ? 'Human' : 'Assistant'}: ${msg.content}`)
-            .join('\n\n');
-
-        const fullPrompt = conversationContext ? 
-            `${conversationContext}\n\nHuman: ${query}` : 
-            query;
-
-        try {
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${this.apiKey}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    contents: [{
-                        parts: [{
-                            text: fullPrompt
-                        }]
-                    }],
-                    generationConfig: {
-                        temperature: 0.7,
-                        topK: 40,
-                        topP: 0.95,
-                        maxOutputTokens: 8192,
-                    },
-                    safetySettings: [
-                        {
-                            category: "HARM_CATEGORY_HARASSMENT",
-                            threshold: "BLOCK_MEDIUM_AND_ABOVE"
-                        },
-                        {
-                            category: "HARM_CATEGORY_HATE_SPEECH",
-                            threshold: "BLOCK_MEDIUM_AND_ABOVE"
-                        },
-                        {
-                            category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                            threshold: "BLOCK_MEDIUM_AND_ABOVE"
-                        },
-                        {
-                            category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-                            threshold: "BLOCK_MEDIUM_AND_ABOVE"
-                        }
-                    ]
-                })
-            });
-
-            if (!response.ok) {
-                throw new Error(`API request failed: ${response.status} ${response.statusText}`);
-            }
-
-            const data = await response.json();
-            
-            if (data.candidates && data.candidates[0] && data.candidates[0].content) {
-                return data.candidates[0].content.parts[0].text;
-            } else {
-                throw new Error('Invalid response format from API');
-            }
-        } catch (error) {
-            console.error('Gemini API Error:', error);
-            
-            // Fallback to enhanced demo response with markdown
-            return this.getEnhancedDemoResponse(query);
-        }
-    }
-
-    getEnhancedDemoResponse(query) {
-        // Enhanced demo response with rich markdown formatting
-        const responses = [
-            `# Understanding Your Query: "${query}"
-
-Thank you for your question! I'd be happy to help you with that. Here's a comprehensive response:
-
-## Key Points
-
-1. **Primary consideration**: This is an important aspect to consider
-2. **Secondary factors**: These play a supporting role
-3. **Implementation details**: Here's how you might approach this
-
-### Code Example
-
-\`\`\`javascript
-// Example implementation
-function processQuery(query) {
-    const result = {
-        input: query,
-        processed: true,
-        timestamp: new Date()
-    };
-    
-    return result;
-}
-
-// Usage
-const response = processQuery("${query}");
-console.log(response);
-\`\`\`
-
-### Additional Information
-
-> **Note**: This is a demonstration of enhanced markdown rendering capabilities, including syntax highlighting, tables, and various formatting options.
-
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Syntax Highlighting | ✅ Enabled | Supports multiple languages |
-| Tables | ✅ Enabled | Responsive design |
-| Blockquotes | ✅ Enabled | Enhanced styling |
-| Code Blocks | ✅ Enabled | Copy functionality |
-
-#### Best Practices
-
-- Always consider the context of your query
-- Break down complex problems into smaller parts
-- Use appropriate formatting for better readability
-- \`Inline code\` can highlight important terms
-
-**Bold text** and *italic text* help emphasize key points, while [links](https://example.com) provide additional resources.
-
----
-
-*This response demonstrates the enhanced markdown rendering system that matches Google AI Studio quality.*`,
-
-            `# Exploring **${query}**
-
-Great question! Let me provide you with a detailed analysis:
-
-## Overview
-
-The topic you've asked about involves several interconnected concepts that I'll break down for clarity.
-
-### Technical Implementation
-
-\`\`\`python
-# Python example for your query
-import json
-from datetime import datetime
-
-class QueryProcessor:
-    def __init__(self, query):
-        self.query = query
-        self.timestamp = datetime.now()
-    
-    def process(self):
-        """Process the incoming query with enhanced capabilities"""
-        return {
-            "original_query": self.query,
-            "processed_at": self.timestamp.isoformat(),
-            "status": "completed",
-            "enhanced_features": [
-                "markdown_rendering",
-                "syntax_highlighting", 
-                "responsive_design"
-            ]
-        }
-
-# Usage example
-processor = QueryProcessor("${query}")
-result = processor.process()
-print(json.dumps(result, indent=2))
-\`\`\`
-
-### Key Benefits
-
-1. **Enhanced Readability**: Professional typography and spacing
-2. **Code Support**: Full syntax highlighting for multiple languages
-3. **Interactive Elements**: Copy buttons and responsive design
-4. **Accessibility**: WCAG compliant styling
-
-> **Pro Tip**: The enhanced markdown system provides Google AI Studio-level quality rendering with support for tables, code blocks, mathematical expressions, and more.
-
-#### Comparison Table
-
-| Feature | Basic Markdown | Enhanced System |
-|---------|----------------|-----------------|
-| Syntax Highlighting | ❌ | ✅ |
-| Copy Code Blocks | ❌ | ✅ |
-| Responsive Tables | ❌ | ✅ |
-| Professional Typography | ❌ | ✅ |
-| Custom Styling | ❌ | ✅ |
-
-### Next Steps
-
-- Explore the various markdown features available
-- Try different code languages for syntax highlighting
-- Test the responsive design on different screen sizes
-
-*Hope this comprehensive response helps with your "${query}" inquiry!*`
-        ];
-
-        return responses[Math.floor(Math.random() * responses.length)];
-    }
-
-    addTypingIndicator() {
-        const conversationContent = document.getElementById('conversation-content');
-        const typingElement = document.createElement('div');
-        typingElement.className = 'message assistant typing';
-        typingElement.innerHTML = `
-            <div class="message-avatar">G</div>
-            <div class="message-content">
-                <div class="typing-animation">
-                    <span></span>
-                    <span></span>
-                    <span></span>
-                </div>
-            </div>
-        `;
-
-        conversationContent.appendChild(typingElement);
-        this.scrollToBottom();
-
-        return typingElement;
-    }
-
-    setLoading(loading) {
-        this.isLoading = loading;
-        const loadingOverlay = document.getElementById('loading-overlay');
-        const sendButtons = document.querySelectorAll('.send-button, .conversation-send-button');
-        
-        if (loading) {
-            loadingOverlay.style.display = 'flex';
-            sendButtons.forEach(btn => btn.disabled = true);
-        } else {
-            loadingOverlay.style.display = 'none';
-            sendButtons.forEach(btn => btn.disabled = false);
-        }
-    }
-
-    scrollToBottom() {
-        const conversationContent = document.getElementById('conversation-content');
-        setTimeout(() => {
-            conversationContent.scrollTop = conversationContent.scrollHeight;
-        }, 100);
-    }
-
-    handleFileUpload() {
-        document.getElementById('file-input').click();
-    }
-
-    handleImageUpload() {
-        const fileInput = document.getElementById('file-input');
-        fileInput.accept = 'image/*';
-        fileInput.click();
-    }
-
-    handleVoiceInput() {
-        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            const recognition = new SpeechRecognition();
-            
-            recognition.continuous = false;
-            recognition.interimResults = false;
-            recognition.lang = 'en-US';
-
-            recognition.onresult = (event) => {
-                const transcript = event.results[0][0].transcript;
-                const activeInput = document.querySelector('.conversation-interface').style.display !== 'none' 
-                    ? document.querySelector('.conversation-input')
-                    : document.querySelector('.ask-anything-text');
-                
-                activeInput.textContent = transcript;
-                activeInput.dispatchEvent(new Event('input'));
-            };
-
-            recognition.onerror = (event) => {
-                console.error('Speech recognition error:', event.error);
-            };
-
-            recognition.start();
-        } else {
-            alert('Speech recognition not supported in your browser.');
-        }
-    }
-
-    processFile(file) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const content = e.target.result;
-            // Process file content here
-            console.log('File processed:', file.name, content.substring(0, 100) + '...');
-        };
-        reader.readAsText(file);
-    }
-
-    addRippleEffects() {
-        const buttons = document.querySelectorAll('.action-button, .send-button, .model-selector, .conversation-action-button, .conversation-send-button');
-        
-        buttons.forEach(button => {
-            button.addEventListener('click', (e) => {
-                const rect = button.getBoundingClientRect();
-                const size = Math.max(rect.width, rect.height);
-                const x = e.clientX - rect.left - size / 2;
-                const y = e.clientY - rect.top - size / 2;
-                
-                const ripple = document.createElement('span');
-                ripple.className = 'ripple';
-                ripple.style.width = ripple.style.height = size + 'px';
-                ripple.style.left = x + 'px';
-                ripple.style.top = y + 'px';
-                
-                button.appendChild(ripple);
-                
-                setTimeout(() => {
-                    ripple.remove();
-                }, 600);
-            });
-        });
-    }
-
-    handleResize() {
-        // Handle responsive design adjustments
-        this.scrollToBottom();
-    }
-}
-
-// Global utility functions
-function copyToClipboard(button) {
-    const code = decodeURIComponent(button.dataset.code);
-    navigator.clipboard.writeText(code).then(() => {
-        const originalContent = button.innerHTML;
-        button.innerHTML = '<i class="fas fa-check"></i>';
-        button.style.color = 'var(--google-green)';
-        
-        setTimeout(() => {
-            button.innerHTML = originalContent;
-            button.style.color = '';
-        }, 2000);
-    }).catch(err => {
-        console.error('Failed to copy code:', err);
+];
+const GEMINI_API_KEY = "AIzaSyCL0lyAzof7p-R8d8QhExCwNWiZE0WiaXQ";
+
+// Initialize Marked.js options
+if (typeof marked !== 'undefined') {
+    marked.setOptions({
+        gfm: true,          // Enable GitHub Flavored Markdown
+        breaks: false,       // CHANGED FROM true
+        pedantic: false     // Be less strict about Markdown syntax
+        // Note: `sanitize` option is deprecated. For robust sanitization, an external library
+        // like DOMPurify would be needed in conjunction with Marked.js.
+        // Relying on Marked.js's default escaping for now.
     });
+} else {
+    console.error("Marked.js library not loaded. Markdown rendering will not be available.");
 }
 
-// Initialize the application
-document.addEventListener('DOMContentLoaded', () => {
-    const app = new GeminiInterface();
-    
-    // Add typing animation CSS
-    const style = document.createElement('style');
-    style.textContent = `
-        .typing-animation {
-            display: flex;
-            gap: 4px;
-            padding: 12px 16px;
+// The above key is now set. The placeholder comment below can be removed or kept for reference.
+// Assume GEMINI_API_KEY will be set globally, e.g.
+// const GEMINI_API_KEY = "YOUR_ACTUAL_API_KEY"; // Needs to be set by the user/environment
+
+function updateButtonCapabilities(capabilities) {
+    const thinkButton = document.querySelector('.action-button i.fa-lightbulb')?.closest('.action-button');
+    const searchButton = document.querySelector('.action-button i.fa-globe')?.closest('.action-button');
+    // const attachButton = document.querySelector('.action-button i.fa-paperclip')?.closest('.action-button');
+
+    if (thinkButton) {
+        thinkButton.disabled = !capabilities.think;
+    }
+    if (searchButton) {
+        searchButton.disabled = !capabilities.search;
+        if (!capabilities.search && isSearchModeActive) {
+            isSearchModeActive = false;
+            searchButton.classList.remove('search-button-active');
+            console.log("Search mode deactivated due to model change not supporting search.");
         }
-        
-        .typing-animation span {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background-color: var(--text-secondary);
-            animation: typing 1.4s infinite ease-in-out;
+    }
+    // if (attachButton) { // Example for attach capability
+    //     attachButton.disabled = !capabilities.attach;
+    // }
+    console.log("Button capabilities updated for current model:", capabilities);
+}
+
+function clearAttachedImage() { // Renamed and refactored
+    const imageUploadInput = document.getElementById('image-upload-input'); // Keep for resetting value
+    const attachmentPreviewArea = document.getElementById('attachment-preview-area');
+    const attachmentThumbnail = document.getElementById('attachment-thumbnail');
+
+    currentImageData = null;
+    if (attachmentPreviewArea) attachmentPreviewArea.style.display = 'none';
+    if (attachmentThumbnail) attachmentThumbnail.src = '#';
+    if (imageUploadInput) imageUploadInput.value = null;
+    console.log("Attachment cleared.");
+}
+
+function createRipple(event) {
+    const button = event.currentTarget;
+
+    const ripple = document.createElement("span");
+    const diameter = Math.max(button.clientWidth, button.clientHeight);
+    const radius = diameter / 2;
+
+    ripple.style.width = ripple.style.height = `${diameter}px`;
+    // Get click position relative to the button
+    const rect = button.getBoundingClientRect();
+    ripple.style.left = `${event.clientX - rect.left - radius}px`;
+    ripple.style.top = `${event.clientY - rect.top - radius}px`;
+
+    ripple.classList.add("ripple");
+
+    // Check if there's an old ripple and remove it (though with timeout this might not be strictly necessary)
+    const oldRipple = button.querySelector(".ripple");
+    if (oldRipple) {
+        oldRipple.remove();
+    }
+
+    button.appendChild(ripple);
+
+    // Remove ripple after animation
+    setTimeout(() => {
+        if (ripple.parentElement) { // Check if still part of DOM
+            ripple.remove();
         }
-        
-        .typing-animation span:nth-child(1) {
-            animation-delay: -0.32s;
+    }, 600); // Match animation duration
+}
+
+async function callGeminiAPI(inputText, thinkingBudget = 0, enableSearchTool = false) { // Removed image params
+    console.log("callGeminiAPI: Received parameters", {
+        inputText: inputText,
+        thinkingBudget: thinkingBudget,
+        enableSearchTool: enableSearchTool,
+        currentImageData_global: currentImageData ? { mimeType: currentImageData.mimeType, base64Data: currentImageData.base64Data.substring(0,30) + "..."} : null
+    });
+    const responseArea = document.getElementById('api-response-area');
+    const spinnerContainer = responseArea ? responseArea.querySelector('.spinner-container') : null;
+    const responseContentDiv = responseArea ? responseArea.querySelector('.response-content') : null;
+
+    if (typeof GEMINI_API_KEY === 'undefined' || !GEMINI_API_KEY) {
+        console.error("GEMINI_API_KEY is not set. Please set it before calling the API.");
+        alert("GEMINI_API_KEY is not set. Please configure it in the script.");
+        if (responseContentDiv && responseArea) { // Ensure responseContentDiv exists
+            responseContentDiv.innerText = "API Key is not configured. Please set GEMINI_API_KEY in the script.";
+            responseContentDiv.style.color = 'var(--google-red)';
+            if(spinnerContainer) spinnerContainer.style.display = 'none';
+            responseContentDiv.style.display = 'block';
+            responseArea.style.display = 'block';
         }
-        
-        .typing-animation span:nth-child(2) {
-            animation-delay: -0.16s;
-        }
-        
-        @keyframes typing {
-            0%, 80%, 100% {
-                transform: scale(0);
-                opacity: 0.5;
+        return null;
+    }
+
+    if (responseArea && spinnerContainer && responseContentDiv) {
+        responseContentDiv.innerHTML = ''; // Clear previous content
+        responseContentDiv.style.display = 'none'; // Hide content area
+        spinnerContainer.style.display = 'flex'; // Show spinner (use flex due to its styling)
+        responseArea.style.display = 'block'; // Ensure main area is visible
+    }
+
+    // const MODEL_ID = "gemini-2.5-flash-preview-05-20"; // REMOVE THIS LINE
+    // The global 'currentModelId' variable (defined outside) will be used here.
+    const GENERATE_CONTENT_API = "streamGenerateContent";
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${currentModelId}:${GENERATE_CONTENT_API}?key=${GEMINI_API_KEY}`;
+
+    const requestBody = {
+        contents: [{ role: "user", parts: [] }], // Parts will be populated below
+        generationConfig: {
+            thinkingConfig: {
+                thinkingBudget: thinkingBudget,
+            },
+            responseMimeType: "text/plain", // Keep as text/plain for Markdown parsing
+        },
+    };
+
+    if (enableSearchTool) {
+        requestBody.tools = [ { "urlContext": {} }, { "googleSearch": {} } ];
+    }
+
+    const parts = [];
+    let textToSend = inputText || "";
+
+    if (currentImageData && currentImageData.base64Data && currentImageData.mimeType) {
+        parts.push({ text: textToSend });
+        parts.push({
+            inline_data: {
+                mime_type: currentImageData.mimeType,
+                data: currentImageData.base64Data
             }
-            40% {
-                transform: scale(1);
-                opacity: 1;
+        });
+        console.log(`callGeminiAPI: Preparing multimodal request with model: ${currentModelId}`, { text: textToSend, imageMime: currentImageData.mimeType });
+    } else if (inputText) {
+        parts.push({ text: inputText });
+    }
+
+    if (parts.length === 0) {
+        console.error("No content (text or image) to send to API.");
+        if (responseContentDiv && responseArea && spinnerContainer) { // Ensure spinnerContainer is defined here too
+            responseContentDiv.innerText = "Please provide text or an image to send.";
+            responseContentDiv.style.color = 'var(--google-red)';
+            spinnerContainer.style.display = 'none';
+            responseContentDiv.style.display = 'block';
+            responseArea.style.display = 'block';
+        }
+        return null;
+    }
+    requestBody.contents[0].parts = parts;
+    console.log("callGeminiAPI: Constructed parts for API request", JSON.stringify(parts, (key, value) => {
+        if (key === 'data' && typeof value === 'string' && value.length > 50) { // Snippet for base64 data in parts
+            return value.substring(0, 30) + "... (truncated)";
+        }
+        return value;
+    }, 2));
+    console.log("callGeminiAPI: Full requestBody for API", JSON.stringify(requestBody, (key, value) => {
+        if (key === 'data' && typeof value === 'string' && value.length > 50) { // Snippet for base64 data in requestBody
+            return value.substring(0, 30) + "... (truncated)";
+        }
+        return value;
+    }, 2));
+
+    try {
+        const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(requestBody),
+        });
+
+        if (spinnerContainer) spinnerContainer.style.display = 'none'; // Hide spinner
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error("API Error:", response.status, errorText);
+            alert(`API Error: ${response.status}. Check console for details.`);
+            if (responseContentDiv) { // Update to use responseContentDiv
+                responseContentDiv.innerText = `Sorry, something went wrong. \nError: ${response.status}. See console for details.`;
+                responseContentDiv.style.color = 'var(--google-red)';
+                responseContentDiv.style.display = 'block';
+            }
+            return null;
+        }
+
+        const data = await response.text();
+        console.log("API Success (raw):", data);
+
+        if (responseContentDiv) { // Update to use responseContentDiv
+            let cleanedData = data;
+            if (data.startsWith(")]}'\n")) { cleanedData = data.substring(5); }
+            let finalText = cleanedData;
+            try {
+                if ((cleanedData.startsWith("{") && cleanedData.endsWith("}")) || (cleanedData.startsWith("[") && cleanedData.endsWith("]"))) {
+                    const jsonData = JSON.parse(cleanedData);
+                    if (jsonData && jsonData.text) { finalText = jsonData.text; }
+                    else if (Array.isArray(jsonData) && jsonData.length > 0 && jsonData[0].candidates && jsonData[0].candidates[0].content && jsonData[0].candidates[0].content.parts && jsonData[0].candidates[0].content.parts[0]) {
+                        let accumulatedText = "";
+                        jsonData.forEach(item => {
+                            if (item.candidates && item.candidates[0] && item.candidates[0].content && item.candidates[0].content.parts && item.candidates[0].content.parts[0] && item.candidates[0].content.parts[0].text) {
+                                accumulatedText += item.candidates[0].content.parts[0].text;
+                            }
+                        });
+                        if (accumulatedText) finalText = accumulatedText;
+                    }
+                }
+            } catch (e) { console.warn("Response was not valid JSON or a known structure, displaying as plain text.", e); }
+
+            if (typeof marked !== 'undefined') {
+                responseContentDiv.innerHTML = marked.parse(finalText);
+            } else {
+                console.error("Marked.js library not loaded. Displaying as plain text.");
+                responseContentDiv.innerText = finalText; // Fallback to plain text
+            }
+            // responseContentDiv.style.color = 'var(--text-primary)'; // Usually handled by CSS on child elements
+            responseContentDiv.style.display = 'block';
+        }
+        return data;
+
+    } catch (error) {
+        if (spinnerContainer) spinnerContainer.style.display = 'none'; // Hide spinner
+        console.error("Fetch Error:", error);
+        alert("Fetch Error. Check console for details.");
+        if (responseContentDiv) { // Update to use responseContentDiv
+            responseContentDiv.innerText = "Failed to fetch response. Please check your connection or API key.";
+            responseContentDiv.style.color = 'var(--google-red)';
+            responseContentDiv.style.display = 'block';
+        }
+        return null;
+    }
+}
+
+// Existing script content follows...
+document.querySelectorAll('.action-button, .model-selector, .send-button, .legacy-search-link').forEach(button => {
+        button.addEventListener('click', (e) => {
+        // Apply ripple to specific button types
+        if (button.classList.contains('action-button') ||
+            button.classList.contains('send-button') ||
+            button.classList.contains('model-selector')) {
+            createRipple(e);
+        }
+
+        e.preventDefault(); // Keep this early
+
+        const askAnythingDiv = document.querySelector('.ask-anything-text');
+        const inputText = askAnythingDiv.innerText.trim();
+
+        // Search button (fa-globe)
+        if (button.classList.contains('action-button') && button.querySelector('i.fa-globe')) {
+            isSearchModeActive = !isSearchModeActive;
+            button.classList.toggle('search-button-active');
+            console.log("Search mode toggled:", isSearchModeActive);
+        }
+        // Think button
+        else if (button.classList.contains('action-button') && button.querySelector('i.fa-lightbulb')) {
+            // console.log("Think button clicked"); // Optional debug log
+            if (!inputText && !currentImageData) {
+                alert("Please enter something or attach an image to think about.");
+                console.log("Input and attachment are empty, 'Think' button not calling API.");
+            } else {
+                console.log("Think Button: Before callGeminiAPI", {
+                    inputText: inputText,
+                    isSearchModeActive: isSearchModeActive,
+                    currentImageData_global: currentImageData ? { mimeType: currentImageData.mimeType, base64Data: currentImageData.base64Data.substring(0,30) + "..." } : null
+                });
+                callGeminiAPI(inputText, 24576, isSearchModeActive);
+                // NOTE: "Think" button intentionally does not clear attachment or text.
             }
         }
-    `;
-    document.head.appendChild(style);
+        // Send button
+        else if (button.classList.contains('send-button')) {
+            // console.log("Send button clicked. Input:", inputText); // Optional debug log
+            if (!inputText && !currentImageData) {
+                alert("Please type something or attach an image to send.");
+                console.log("Input and attachment are empty, 'Send' button not calling API.");
+            } else {
+                console.log("Send Button: Before callGeminiAPI", {
+                    inputText: inputText,
+                    isSearchModeActive: isSearchModeActive,
+                    currentImageData_global: currentImageData ? { mimeType: currentImageData.mimeType, base64Data: currentImageData.base64Data.substring(0,30) + "..." } : null
+                });
+                callGeminiAPI(inputText, 0, isSearchModeActive);
+                // Clear input after sending
+                askAnythingDiv.innerText = '';
+                clearAttachedImage(); // Clear attachment after sending for "Send" button
+            }
+        }
+        // Attach button (fa-paperclip)
+        else if (button.classList.contains('action-button') && button.querySelector('i.fa-paperclip')) {
+            const imageUploadInput = document.getElementById('image-upload-input');
+            if (imageUploadInput) {
+                imageUploadInput.click(); // Trigger file picker dialog
+            } else {
+                console.error("Image upload input element not found!");
+            }
+        }
+        // Model selector
+        else if (button.classList.contains('model-selector')) {
+            const dropdown = document.getElementById('model-dropdown-list');
+            if (dropdown) {
+                const isVisible = dropdown.style.display === 'block';
+                dropdown.style.display = isVisible ? 'none' : 'block';
+                console.log("Model dropdown toggled:", !isVisible);
+            }
+        }
+        // Legacy search link
+        else if (button.classList.contains('legacy-search-link')) {
+            alert("This would redirect to legacy Google Search in a real implementation.");
+        }
+    });
 });
+
+// Model dropdown population and handling
+document.addEventListener('DOMContentLoaded', () => {
+    const dropdown = document.getElementById('model-dropdown-list');
+    const selectedModelLabel = document.getElementById('selected-model-label');
+
+    if (dropdown) {
+        // Populate dropdown
+        availableModels.forEach(model => {
+            const item = document.createElement('div');
+            item.className = 'model-dropdown-item';
+            if (model.id === currentModelId) {
+                item.classList.add('selected-model-item');
+            }
+            item.textContent = model.label;
+            item.dataset.modelId = model.id;
+
+            item.addEventListener('click', () => {
+                // Update selected model
+                currentModelId = model.id;
+                if (selectedModelLabel) selectedModelLabel.textContent = model.label;
+
+                // Update UI to reflect selection
+                document.querySelectorAll('.model-dropdown-item').forEach(i => i.classList.remove('selected-model-item'));
+                item.classList.add('selected-model-item');
+
+                // Update button capabilities
+                updateButtonCapabilities(model.capabilities);
+
+                // Hide dropdown
+                dropdown.style.display = 'none';
+                console.log("Model changed to:", model.label, "capabilities:", model.capabilities);
+            });
+
+            dropdown.appendChild(item);
+        });
+
+        // Initialize capabilities for default model
+        const defaultModel = availableModels.find(m => m.id === currentModelId);
+        if (defaultModel) {
+            updateButtonCapabilities(defaultModel.capabilities);
+        }
+    }
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+        const dropdown = document.getElementById('model-dropdown-list');
+        const modelSelector = document.querySelector('.model-selector');
+        
+        if (dropdown && modelSelector && !modelSelector.contains(e.target)) {
+            dropdown.style.display = 'none';
+        }
+    });
+});
+
+// Image upload handling
+document.getElementById('image-upload-input')?.addEventListener('change', function(event) {
+    const file = event.target.files[0];
+    if (file) {
+        // Validate file type
+        if (!file.type.startsWith('image/')) {
+            alert('Please select a valid image file.');
+            return;
+        }
+
+        // Validate file size (e.g., 10MB limit)
+        const maxSize = 10 * 1024 * 1024; // 10MB
+        if (file.size > maxSize) {
+            alert('File size must be less than 10MB.');
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const dataURL = e.target.result;
+            const base64Data = dataURL.split(',')[1]; // Remove data:image/...;base64, prefix
+            
+            // Store image data globally
+            currentImageData = {
+                mimeType: file.type,
+                base64Data: base64Data,
+                dataURLForPreview: dataURL
+            };
+
+            // Show preview
+            const attachmentPreviewArea = document.getElementById('attachment-preview-area');
+            const attachmentThumbnail = document.getElementById('attachment-thumbnail');
+            
+            if (attachmentPreviewArea && attachmentThumbnail) {
+                attachmentThumbnail.src = dataURL;
+                attachmentPreviewArea.style.display = 'block';
+            }
+
+            console.log('Image uploaded:', {
+                name: file.name,
+                type: file.type,
+                size: file.size,
+                base64Length: base64Data.length
+            });
+        };
+        reader.readAsDataURL(file);
+    }
+});
+
+// Remove attachment button
+document.getElementById('remove-attachment-button')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    clearAttachedImage();
+});
+
+// Handle Enter key in text input
+document.querySelector('.ask-anything-text')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        const sendButton = document.querySelector('.send-button');
+        if (sendButton) {
+            sendButton.click();
+        }
+    }
+});
+
+console.log("Gemini Search Interface loaded successfully!");

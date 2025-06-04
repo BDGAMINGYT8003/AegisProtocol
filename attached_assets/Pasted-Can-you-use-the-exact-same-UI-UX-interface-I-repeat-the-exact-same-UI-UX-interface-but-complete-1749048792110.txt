@@ -1,3 +1,5 @@
+Can you use the exact same UI/UX/interface — I repeat, the exact same UI/UX/interface — but completely overhaul Gemini’s AI text markdown system to make it look as polished and visually appealing as possible? Discard the current markdown system entirely, and rebuild it based on your knowledge so that it matches the quality and appearance of the markdowns in Google AI Studio or the official Gemini app. Also use the same API key, configurations, systems and layouts without changing anything major.
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -690,9 +692,491 @@
         <a href="#" class="legacy-search-link">Go back to legacy search</a>
     </div>
 
-    <!-- Hidden file input for image upload -->
-    <input type="file" id="image-upload-input" accept="image/*" style="display: none;">
+    <script>
+    let isSearchModeActive = false;
+    // Removed: attachedImageBase64, attachedImageMimeType, fullDataUrlForPreview
+    let currentImageData = null; // Will store { mimeType, base64Data, dataURLForPreview }
+    let currentModelId = "gemini-2.5-flash-preview-05-20"; // Default model
+    const availableModels = [
+        {
+            id: "gemini-2.5-flash-preview-05-20",
+            label: "Gemini 2.5 Flash",
+            capabilities: { think: true, search: true, attach: true }
+        },
+        {
+            id: "gemini-2.0-flash",
+            label: "Gemini 2.0 Flash",
+            capabilities: { think: false, search: true, attach: true }
+        },
+        {
+            id: "gemini-2.0-flash-lite",
+            label: "Gemini 2.0 Flash-Lite",
+            capabilities: { think: false, search: false, attach: true }
+        }
+    ];
+    const GEMINI_API_KEY = "AIzaSyCL0lyAzof7p-R8d8QhExCwNWiZE0WiaXQ";
 
-    <script src="script.js"></script>
+    // Initialize Marked.js options
+    if (typeof marked !== 'undefined') {
+        marked.setOptions({
+            gfm: true,          // Enable GitHub Flavored Markdown
+            breaks: false,       // CHANGED FROM true
+            pedantic: false     // Be less strict about Markdown syntax
+            // Note: `sanitize` option is deprecated. For robust sanitization, an external library
+            // like DOMPurify would be needed in conjunction with Marked.js.
+            // Relying on Marked.js's default escaping for now.
+        });
+    } else {
+        console.error("Marked.js library not loaded. Markdown rendering will not be available.");
+    }
+
+    // The above key is now set. The placeholder comment below can be removed or kept for reference.
+    // Assume GEMINI_API_KEY will be set globally, e.g.
+    // const GEMINI_API_KEY = "YOUR_ACTUAL_API_KEY"; // Needs to be set by the user/environment
+
+    function updateButtonCapabilities(capabilities) {
+        const thinkButton = document.querySelector('.action-button i.fa-lightbulb')?.closest('.action-button');
+        const searchButton = document.querySelector('.action-button i.fa-globe')?.closest('.action-button');
+        // const attachButton = document.querySelector('.action-button i.fa-paperclip')?.closest('.action-button');
+
+        if (thinkButton) {
+            thinkButton.disabled = !capabilities.think;
+        }
+        if (searchButton) {
+            searchButton.disabled = !capabilities.search;
+            if (!capabilities.search && isSearchModeActive) {
+                isSearchModeActive = false;
+                searchButton.classList.remove('search-button-active');
+                console.log("Search mode deactivated due to model change not supporting search.");
+            }
+        }
+        // if (attachButton) { // Example for attach capability
+        //     attachButton.disabled = !capabilities.attach;
+        // }
+        console.log("Button capabilities updated for current model:", capabilities);
+    }
+
+    function clearAttachedImage() { // Renamed and refactored
+        const imageUploadInput = document.getElementById('image-upload-input'); // Keep for resetting value
+        const attachmentPreviewArea = document.getElementById('attachment-preview-area');
+        const attachmentThumbnail = document.getElementById('attachment-thumbnail');
+
+        currentImageData = null;
+        if (attachmentPreviewArea) attachmentPreviewArea.style.display = 'none';
+        if (attachmentThumbnail) attachmentThumbnail.src = '#';
+        if (imageUploadInput) imageUploadInput.value = null;
+        console.log("Attachment cleared.");
+    }
+
+    function createRipple(event) {
+        const button = event.currentTarget;
+
+        const ripple = document.createElement("span");
+        const diameter = Math.max(button.clientWidth, button.clientHeight);
+        const radius = diameter / 2;
+
+        ripple.style.width = ripple.style.height = `${diameter}px`;
+        // Get click position relative to the button
+        const rect = button.getBoundingClientRect();
+        ripple.style.left = `${event.clientX - rect.left - radius}px`;
+        ripple.style.top = `${event.clientY - rect.top - radius}px`;
+
+        ripple.classList.add("ripple");
+
+        // Check if there's an old ripple and remove it (though with timeout this might not be strictly necessary)
+        const oldRipple = button.querySelector(".ripple");
+        if (oldRipple) {
+            oldRipple.remove();
+        }
+
+        button.appendChild(ripple);
+
+        // Remove ripple after animation
+        setTimeout(() => {
+            if (ripple.parentElement) { // Check if still part of DOM
+                ripple.remove();
+            }
+        }, 600); // Match animation duration
+    }
+
+    async function callGeminiAPI(inputText, thinkingBudget = 0, enableSearchTool = false) { // Removed image params
+        console.log("callGeminiAPI: Received parameters", {
+            inputText: inputText,
+            thinkingBudget: thinkingBudget,
+            enableSearchTool: enableSearchTool,
+            currentImageData_global: currentImageData ? { mimeType: currentImageData.mimeType, base64Data: currentImageData.base64Data.substring(0,30) + "..."} : null
+        });
+        const responseArea = document.getElementById('api-response-area');
+        const spinnerContainer = responseArea ? responseArea.querySelector('.spinner-container') : null;
+        const responseContentDiv = responseArea ? responseArea.querySelector('.response-content') : null;
+
+        if (typeof GEMINI_API_KEY === 'undefined' || !GEMINI_API_KEY) {
+            console.error("GEMINI_API_KEY is not set. Please set it before calling the API.");
+            alert("GEMINI_API_KEY is not set. Please configure it in the script.");
+            if (responseContentDiv && responseArea) { // Ensure responseContentDiv exists
+                responseContentDiv.innerText = "API Key is not configured. Please set GEMINI_API_KEY in the script.";
+                responseContentDiv.style.color = 'var(--google-red)';
+                if(spinnerContainer) spinnerContainer.style.display = 'none';
+                responseContentDiv.style.display = 'block';
+                responseArea.style.display = 'block';
+            }
+            return null;
+        }
+
+        if (responseArea && spinnerContainer && responseContentDiv) {
+            responseContentDiv.innerHTML = ''; // Clear previous content
+            responseContentDiv.style.display = 'none'; // Hide content area
+            spinnerContainer.style.display = 'flex'; // Show spinner (use flex due to its styling)
+            responseArea.style.display = 'block'; // Ensure main area is visible
+        }
+
+        // const MODEL_ID = "gemini-2.5-flash-preview-05-20"; // REMOVE THIS LINE
+        // The global 'currentModelId' variable (defined outside) will be used here.
+        const GENERATE_CONTENT_API = "streamGenerateContent";
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${currentModelId}:${GENERATE_CONTENT_API}?key=${GEMINI_API_KEY}`;
+
+        const requestBody = {
+            contents: [{ role: "user", parts: [] }], // Parts will be populated below
+            generationConfig: {
+                thinkingConfig: {
+                    thinkingBudget: thinkingBudget,
+                },
+                responseMimeType: "text/plain", // Keep as text/plain for Markdown parsing
+            },
+        };
+
+        if (enableSearchTool) {
+            requestBody.tools = [ { "urlContext": {} }, { "googleSearch": {} } ];
+        }
+
+        const parts = [];
+        let textToSend = inputText || "";
+
+        if (currentImageData && currentImageData.base64Data && currentImageData.mimeType) {
+            parts.push({ text: textToSend });
+            parts.push({
+                inline_data: {
+                    mime_type: currentImageData.mimeType,
+                    data: currentImageData.base64Data
+                }
+            });
+            console.log(`callGeminiAPI: Preparing multimodal request with model: ${currentModelId}`, { text: textToSend, imageMime: currentImageData.mimeType });
+        } else if (inputText) {
+            parts.push({ text: inputText });
+        }
+
+        if (parts.length === 0) {
+            console.error("No content (text or image) to send to API.");
+            if (responseContentDiv && responseArea && spinnerContainer) { // Ensure spinnerContainer is defined here too
+                responseContentDiv.innerText = "Please provide text or an image to send.";
+                responseContentDiv.style.color = 'var(--google-red)';
+                spinnerContainer.style.display = 'none';
+                responseContentDiv.style.display = 'block';
+                responseArea.style.display = 'block';
+            }
+            return null;
+        }
+        requestBody.contents[0].parts = parts;
+        console.log("callGeminiAPI: Constructed parts for API request", JSON.stringify(parts, (key, value) => {
+            if (key === 'data' && typeof value === 'string' && value.length > 50) { // Snippet for base64 data in parts
+                return value.substring(0, 30) + "... (truncated)";
+            }
+            return value;
+        }, 2));
+        console.log("callGeminiAPI: Full requestBody for API", JSON.stringify(requestBody, (key, value) => {
+            if (key === 'data' && typeof value === 'string' && value.length > 50) { // Snippet for base64 data in requestBody
+                return value.substring(0, 30) + "... (truncated)";
+            }
+            return value;
+        }, 2));
+
+        try {
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(requestBody),
+            });
+
+            if (spinnerContainer) spinnerContainer.style.display = 'none'; // Hide spinner
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error("API Error:", response.status, errorText);
+                alert(`API Error: ${response.status}. Check console for details.`);
+                if (responseContentDiv) { // Update to use responseContentDiv
+                    responseContentDiv.innerText = `Sorry, something went wrong. \nError: ${response.status}. See console for details.`;
+                    responseContentDiv.style.color = 'var(--google-red)';
+                    responseContentDiv.style.display = 'block';
+                }
+                return null;
+            }
+
+            const data = await response.text();
+            console.log("API Success (raw):", data);
+
+            if (responseContentDiv) { // Update to use responseContentDiv
+                let cleanedData = data;
+                if (data.startsWith(")]}'\n")) { cleanedData = data.substring(5); }
+                let finalText = cleanedData;
+                try {
+                    if ((cleanedData.startsWith("{") && cleanedData.endsWith("}")) || (cleanedData.startsWith("[") && cleanedData.endsWith("]"))) {
+                        const jsonData = JSON.parse(cleanedData);
+                        if (jsonData && jsonData.text) { finalText = jsonData.text; }
+                        else if (Array.isArray(jsonData) && jsonData.length > 0 && jsonData[0].candidates && jsonData[0].candidates[0].content && jsonData[0].candidates[0].content.parts && jsonData[0].candidates[0].content.parts[0]) {
+                            let accumulatedText = "";
+                            jsonData.forEach(item => {
+                                if (item.candidates && item.candidates[0] && item.candidates[0].content && item.candidates[0].content.parts && item.candidates[0].content.parts[0] && item.candidates[0].content.parts[0].text) {
+                                    accumulatedText += item.candidates[0].content.parts[0].text;
+                                }
+                            });
+                            if (accumulatedText) finalText = accumulatedText;
+                        }
+                    }
+                } catch (e) { console.warn("Response was not valid JSON or a known structure, displaying as plain text.", e); }
+
+                if (typeof marked !== 'undefined') {
+                    responseContentDiv.innerHTML = marked.parse(finalText);
+                } else {
+                    console.error("Marked.js library not loaded. Displaying as plain text.");
+                    responseContentDiv.innerText = finalText; // Fallback to plain text
+                }
+                // responseContentDiv.style.color = 'var(--text-primary)'; // Usually handled by CSS on child elements
+                responseContentDiv.style.display = 'block';
+            }
+            return data;
+
+        } catch (error) {
+            if (spinnerContainer) spinnerContainer.style.display = 'none'; // Hide spinner
+            console.error("Fetch Error:", error);
+            alert("Fetch Error. Check console for details.");
+            if (responseContentDiv) { // Update to use responseContentDiv
+                responseContentDiv.innerText = "Failed to fetch response. Please check your connection or API key.";
+                responseContentDiv.style.color = 'var(--google-red)';
+                responseContentDiv.style.display = 'block';
+            }
+            return null;
+        }
+    }
+
+    // Existing script content follows...
+    document.querySelectorAll('.action-button, .model-selector, .send-button, .legacy-search-link').forEach(button => {
+            button.addEventListener('click', (e) => {
+            // Apply ripple to specific button types
+            if (button.classList.contains('action-button') ||
+                button.classList.contains('send-button') ||
+                button.classList.contains('model-selector')) {
+                createRipple(e);
+            }
+
+            e.preventDefault(); // Keep this early
+
+            const askAnythingDiv = document.querySelector('.ask-anything-text');
+            const inputText = askAnythingDiv.innerText.trim();
+
+            // Search button (fa-globe)
+            if (button.classList.contains('action-button') && button.querySelector('i.fa-globe')) {
+                isSearchModeActive = !isSearchModeActive;
+                button.classList.toggle('search-button-active');
+                console.log("Search mode toggled:", isSearchModeActive);
+            }
+            // Think button
+            else if (button.classList.contains('action-button') && button.querySelector('i.fa-lightbulb')) {
+                // console.log("Think button clicked"); // Optional debug log
+                if (!inputText && !currentImageData) {
+                    alert("Please enter something or attach an image to think about.");
+                    console.log("Input and attachment are empty, 'Think' button not calling API.");
+                } else {
+                    console.log("Think Button: Before callGeminiAPI", {
+                        inputText: inputText,
+                        isSearchModeActive: isSearchModeActive,
+                        currentImageData_global: currentImageData ? { mimeType: currentImageData.mimeType, base64Data: currentImageData.base64Data.substring(0,30) + "..." } : null
+                    });
+                    callGeminiAPI(inputText, 24576, isSearchModeActive);
+                    // NOTE: "Think" button intentionally does not clear attachment or text.
+                }
+            }
+            // Send button
+            else if (button.classList.contains('send-button')) {
+                // console.log("Send button clicked. Input:", inputText); // Optional debug log
+                if (!inputText && !currentImageData) {
+                    alert("Please type something or attach an image to send.");
+                    console.log("Input and attachment are empty, 'Send' button not calling API.");
+                } else {
+                    console.log("Send Button: Before callGeminiAPI", {
+                        inputText: inputText,
+                        isSearchModeActive: isSearchModeActive,
+                        currentImageData_global: currentImageData ? { mimeType: currentImageData.mimeType, base64Data: currentImageData.base64Data.substring(0,30) + "..." } : null
+                    });
+                    callGeminiAPI(inputText, 0, isSearchModeActive);
+                    askAnythingDiv.innerText = '';
+                    clearAttachedImage(); // Use the new clear function
+                }
+            }
+            // Attach button (fa-paperclip)
+            else if (button.classList.contains('action-button') && button.querySelector('i.fa-paperclip')) {
+                const imageUploadInput = document.getElementById('image-upload-input'); // This element will be added later
+                if (imageUploadInput) {
+                    imageUploadInput.click();
+                } else {
+                    console.error("Image upload input not found. HTML might be missing.");
+                    alert("Attach feature error: File input element not found.");
+                }
+            }
+            // Other buttons (e.g., Model Selector, Legacy Search Link)
+            else {
+                console.log(`Other button/link clicked: ${button.textContent.trim() || button.className}`);
+                // Removed alert for model-selector as it has its own handler
+                if (button.classList.contains('legacy-search-link')) {
+                    alert("Legacy search link clicked. Navigation not yet implemented.");
+                }
+            }
+            });
+        });
+
+        // Prevent pinch zoom (as requested, though generally not recommended for accessibility)
+        document.addEventListener('gesturestart', function (e) {
+            e.preventDefault();
+        });
+        // For older iOS
+        document.addEventListener('touchmove', function (event) {
+            if (event.scale !== 1 && event.scale !== undefined) { event.preventDefault(); }
+        }, { passive: false });
+
+
+        // JS to potentially improve layout precision if CSS isn't enough (often not needed with modern CSS)
+        // For instance, dynamically adjusting font sizes or spacing based on container width,
+        // but CSS clamp() and flexbox/grid usually handle this well.
+        // For this design, CSS should be sufficient.
+
+
+        // Event listeners for file input and remove attachment button
+        const imageUploadInput = document.getElementById('image-upload-input');
+        const attachmentPreviewArea = document.getElementById('attachment-preview-area');
+        const attachmentThumbnail = document.getElementById('attachment-thumbnail');
+        const removeAttachmentButton = document.getElementById('remove-attachment-button');
+
+        if (imageUploadInput && attachmentPreviewArea && attachmentThumbnail && removeAttachmentButton) {
+            imageUploadInput.addEventListener('change', function(event) {
+                const file = event.target.files[0];
+                if (!file) return; // No file selected
+
+                if (!file.type.startsWith('image/')) {
+                    alert("Please select an image file (e.g., PNG, JPG, GIF, WEBP).");
+                    imageUploadInput.value = null; // Reset file input
+                    return;
+                }
+
+                if (file.size > 4 * 1024 * 1024) { // 4MB limit
+                    alert("Image file is too large. Please select an image smaller than 4MB.");
+                    imageUploadInput.value = null; // Reset file input
+                    return;
+                }
+
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const dataURL = e.target.result;
+                    const base64Marker = 'base64,';
+                    const base64DataIndex = dataURL.indexOf(base64Marker);
+                    let base64DataPure = '';
+
+                    if (base64DataIndex > -1) {
+                        base64DataPure = dataURL.substring(base64DataIndex + base64Marker.length);
+                    } else {
+                        console.error("Could not parse base64 data from DataURL for attachment. DataURL:", dataURL);
+                        alert("Error processing image: Could not extract Base64 data.");
+                        clearAttachedImage(); // Clear everything on error
+                        return;
+                    }
+
+                    currentImageData = {
+                        mimeType: file.type,
+                        base64Data: base64DataPure,
+                        dataURLForPreview: dataURL
+                    };
+                    attachmentThumbnail.src = currentImageData.dataURLForPreview;
+                    attachmentPreviewArea.style.display = 'block';
+                    console.log("Image attached:", currentImageData.mimeType, "Size:", file.size);
+                };
+                reader.onerror = function(e) {
+                    console.error("FileReader error:", e);
+                    alert("Error reading the image file.");
+                    clearAttachedImage();
+                };
+                reader.readAsDataURL(file);
+                imageUploadInput.value = null; // Allow re-selecting the same file
+            });
+
+            removeAttachmentButton.addEventListener('click', function(e) {
+                clearAttachedImage();
+            });
+        } else {
+            console.error("One or more attachment related elements are missing from the DOM (image input/preview).");
+        }
+
+        // Model Selector Logic
+        const modelSelectorContainer = document.querySelector('.model-selector-container');
+        const modelSelectorButton = document.querySelector('.model-selector');
+        const modelDropdownList = document.getElementById('model-dropdown-list');
+        const selectedModelLabel = document.getElementById('selected-model-label');
+
+        function populateModelDropdown() {
+            if (!modelDropdownList || !availableModels) return;
+            modelDropdownList.innerHTML = '';
+            availableModels.forEach(model => {
+                const item = document.createElement('div');
+                item.classList.add('model-dropdown-item');
+                item.textContent = model.label;
+                item.dataset.modelId = model.id;
+                if (model.id === currentModelId) {
+                    item.classList.add('selected-model-item');
+                    if(selectedModelLabel) selectedModelLabel.textContent = model.label; // Ensure label is set on load
+                }
+                item.addEventListener('click', () => {
+                    currentModelId = model.id;
+                    if (selectedModelLabel) selectedModelLabel.textContent = model.label;
+
+                    document.querySelectorAll('.model-dropdown-item').forEach(i => i.classList.remove('selected-model-item'));
+                    item.classList.add('selected-model-item');
+
+                    const selectedModel = availableModels.find(m => m.id === currentModelId);
+                    if (selectedModel) {
+                        updateButtonCapabilities(selectedModel.capabilities);
+                    }
+
+                    if (modelDropdownList) modelDropdownList.style.display = 'none';
+                    console.log("Model changed to:", currentModelId);
+                });
+                modelDropdownList.appendChild(item);
+            });
+        }
+
+        if (modelSelectorButton && modelDropdownList && selectedModelLabel && modelSelectorContainer) {
+            populateModelDropdown();
+
+            modelSelectorButton.addEventListener('click', (event) => {
+                event.stopPropagation();
+                modelDropdownList.style.display = modelDropdownList.style.display === 'none' ? 'block' : 'none';
+            });
+        } else {
+            console.error("Model selector related DOM elements not found. Check IDs and structure.");
+        }
+
+        document.addEventListener('click', function(event) {
+            if (modelDropdownList && modelSelectorContainer &&
+                !modelSelectorContainer.contains(event.target) &&
+                modelDropdownList.style.display === 'block') {
+                modelDropdownList.style.display = 'none';
+            }
+        });
+
+        // Initial capability setup on page load
+        const initialSelectedModel = availableModels.find(m => m.id === currentModelId);
+        if (initialSelectedModel) {
+            updateButtonCapabilities(initialSelectedModel.capabilities);
+        }
+    </script>
+    <input type="file" id="image-upload-input" accept="image/*" style="display: none;">
 </body>
 </html>
