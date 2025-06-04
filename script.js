@@ -146,8 +146,17 @@ async function callGeminiAPI(inputText, thinkingBudget = 0, enableSearchTool = f
             thinkingConfig: {
                 thinkingBudget: thinkingBudget,
             },
+            temperature: 0.7,
+            topP: 0.8,
+            topK: 40,
+            maxOutputTokens: 8192,
             responseMimeType: "text/plain", // Keep as text/plain for Markdown parsing
         },
+        systemInstruction: {
+            parts: [{
+                text: "You are a professional AI assistant that excels at providing well-structured, comprehensive responses. Always use proper markdown formatting including headings, lists, code blocks, tables, and other formatting elements to make your responses clear and visually appealing. Structure your responses logically with appropriate sections and subsections."
+            }]
+        }
     };
 
     if (enableSearchTool) {
@@ -155,7 +164,15 @@ async function callGeminiAPI(inputText, thinkingBudget = 0, enableSearchTool = f
     }
 
     const parts = [];
-    let textToSend = inputText || "";
+    
+    // Enhanced prompt to encourage rich markdown formatting
+    const markdownPrompt = `You are an advanced AI assistant that provides comprehensive, well-structured responses using rich markdown formatting. Always format your responses with appropriate headings, bullet points, code blocks, tables, blockquotes, and other markdown elements to enhance readability and provide professional-grade output.
+
+User Query: ${inputText || ""}
+
+Please provide a detailed, well-formatted response using markdown elements where appropriate.`;
+    
+    let textToSend = markdownPrompt;
 
     if (currentImageData && currentImageData.base64Data && currentImageData.mimeType) {
         parts.push({ text: textToSend });
@@ -165,9 +182,9 @@ async function callGeminiAPI(inputText, thinkingBudget = 0, enableSearchTool = f
                 data: currentImageData.base64Data
             }
         });
-        console.log(`callGeminiAPI: Preparing multimodal request with model: ${currentModelId}`, { text: textToSend, imageMime: currentImageData.mimeType });
+        console.log(`callGeminiAPI: Preparing multimodal request with model: ${currentModelId}`, { text: inputText, imageMime: currentImageData.mimeType });
     } else if (inputText) {
-        parts.push({ text: inputText });
+        parts.push({ text: textToSend });
     }
 
     if (parts.length === 0) {
@@ -221,15 +238,19 @@ async function callGeminiAPI(inputText, thinkingBudget = 0, enableSearchTool = f
         const data = await response.text();
         console.log("API Success (raw):", data);
 
-        if (responseContentDiv) { // Update to use responseContentDiv
+        if (responseContentDiv) {
             let cleanedData = data;
             if (data.startsWith(")]}'\n")) { cleanedData = data.substring(5); }
             let finalText = cleanedData;
+            
+            // Enhanced JSON parsing for streaming responses
             try {
                 if ((cleanedData.startsWith("{") && cleanedData.endsWith("}")) || (cleanedData.startsWith("[") && cleanedData.endsWith("]"))) {
                     const jsonData = JSON.parse(cleanedData);
-                    if (jsonData && jsonData.text) { finalText = jsonData.text; }
-                    else if (Array.isArray(jsonData) && jsonData.length > 0 && jsonData[0].candidates && jsonData[0].candidates[0].content && jsonData[0].candidates[0].content.parts && jsonData[0].candidates[0].content.parts[0]) {
+                    if (jsonData && jsonData.text) { 
+                        finalText = jsonData.text; 
+                    }
+                    else if (Array.isArray(jsonData) && jsonData.length > 0) {
                         let accumulatedText = "";
                         jsonData.forEach(item => {
                             if (item.candidates && item.candidates[0] && item.candidates[0].content && item.candidates[0].content.parts && item.candidates[0].content.parts[0] && item.candidates[0].content.parts[0].text) {
@@ -238,16 +259,48 @@ async function callGeminiAPI(inputText, thinkingBudget = 0, enableSearchTool = f
                         });
                         if (accumulatedText) finalText = accumulatedText;
                     }
+                } else {
+                    // Handle streaming JSON-like responses
+                    const lines = cleanedData.trim().split('\n');
+                    let accumulatedText = "";
+                    lines.forEach(line => {
+                        if (line.trim() && !line.trim().startsWith(',')) {
+                            try {
+                                const parsedLine = JSON.parse(line.replace(/,$/, ''));
+                                if (parsedLine.candidates && parsedLine.candidates[0] && parsedLine.candidates[0].content && parsedLine.candidates[0].content.parts && parsedLine.candidates[0].content.parts[0] && parsedLine.candidates[0].content.parts[0].text) {
+                                    accumulatedText += parsedLine.candidates[0].content.parts[0].text;
+                                }
+                            } catch (lineError) {
+                                // Skip invalid JSON lines
+                            }
+                        }
+                    });
+                    if (accumulatedText) finalText = accumulatedText;
                 }
-            } catch (e) { console.warn("Response was not valid JSON or a known structure, displaying as plain text.", e); }
+            } catch (e) { 
+                console.warn("Response was not valid JSON or a known structure, displaying as plain text.", e); 
+            }
 
+            // Enhanced markdown processing
             if (typeof marked !== 'undefined') {
-                responseContentDiv.innerHTML = marked.parse(finalText);
+                // Post-process the text to ensure better markdown formatting
+                let processedText = finalText
+                    .replace(/\n\n\n+/g, '\n\n') // Remove excessive line breaks
+                    .replace(/^\s+/gm, '') // Remove leading whitespace from lines
+                    .trim();
+                
+                // Ensure proper spacing around headers
+                processedText = processedText.replace(/^(#+\s.+)$/gm, '\n$1\n');
+                
+                // Parse and render markdown
+                responseContentDiv.innerHTML = marked.parse(processedText);
+                
+                // Add copy buttons to code blocks
+                addCopyButtonsToCodeBlocks(responseContentDiv);
             } else {
                 console.error("Marked.js library not loaded. Displaying as plain text.");
-                responseContentDiv.innerText = finalText; // Fallback to plain text
+                responseContentDiv.innerText = finalText;
             }
-            // responseContentDiv.style.color = 'var(--text-primary)'; // Usually handled by CSS on child elements
             responseContentDiv.style.display = 'block';
         }
         return data;
@@ -464,5 +517,46 @@ document.querySelector('.ask-anything-text')?.addEventListener('keydown', (e) =>
         }
     }
 });
+
+// Function to add copy buttons to code blocks
+function addCopyButtonsToCodeBlocks(container) {
+    const codeBlocks = container.querySelectorAll('pre code');
+    codeBlocks.forEach(block => {
+        const pre = block.parentElement;
+        if (pre && !pre.querySelector('.copy-button')) {
+            const copyButton = document.createElement('button');
+            copyButton.className = 'copy-button';
+            copyButton.innerHTML = '<i class="fas fa-copy"></i>';
+            copyButton.title = 'Copy code';
+            copyButton.style.cssText = `
+                position: absolute;
+                top: 8px;
+                right: 8px;
+                background: rgba(255, 255, 255, 0.9);
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                padding: 4px 8px;
+                cursor: pointer;
+                font-size: 12px;
+                color: #666;
+                transition: all 0.2s ease;
+            `;
+            
+            copyButton.addEventListener('click', () => {
+                navigator.clipboard.writeText(block.textContent).then(() => {
+                    copyButton.innerHTML = '<i class="fas fa-check"></i>';
+                    copyButton.style.color = '#4CAF50';
+                    setTimeout(() => {
+                        copyButton.innerHTML = '<i class="fas fa-copy"></i>';
+                        copyButton.style.color = '#666';
+                    }, 2000);
+                });
+            });
+            
+            pre.style.position = 'relative';
+            pre.appendChild(copyButton);
+        }
+    });
+}
 
 console.log("Gemini Search Interface loaded successfully!");
