@@ -6,13 +6,11 @@ const availableModels = [
     {
         id: "gemini-2.5-flash-preview-05-20",
         label: "Gemini 2.5 Flash",
-        shortLabel: "Gemini 2.5 F",
         capabilities: { think: true, search: true, attach: true }
     },
     {
         id: "gemini-2.0-flash",
         label: "Gemini 2.0 Flash",
-        shortLabel: "Gemini 2.0 F",
         capabilities: { think: false, search: true, attach: true }
     },
     {
@@ -428,8 +426,10 @@ document.addEventListener('DOMContentLoaded', () => {
             item.addEventListener('click', () => {
                 // Update selected model
                 currentModelId = model.id;
-                // Use short label for display, especially for Flash-Lite
-                if (selectedModelLabel) selectedModelLabel.textContent = model.shortLabel || model.label;
+                // Only use short label for Flash-Lite
+                if (selectedModelLabel) {
+                    selectedModelLabel.textContent = (model.id === "gemini-2.0-flash-lite") ? model.shortLabel : model.label;
+                }
 
                 // Update UI to reflect selection
                 document.querySelectorAll('.model-dropdown-item').forEach(i => i.classList.remove('selected-model-item'));

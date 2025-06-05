@@ -55,7 +55,7 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: flex-start; /* Changed from center to flex-start */
+            justify-content: center;
             padding: 20px;
             min-height: 100vh; /* Ensure body takes at least full viewport height */
         }
@@ -67,7 +67,6 @@
             gap: 28px; /* Space between logo, search bar, and link */
             width: 100%;
             max-width: 620px; /* Max width for the search area */
-            margin-top: 5vh; /* Add some top margin when content is short */
         }
 
         .logo {
@@ -672,7 +671,7 @@
                 <div class="action-buttons-right">
                     <div class="model-selector-container" style="position: relative;">
                         <button class="model-selector">
-                            <span id="selected-model-label">Gemini 2.5 F</span> <i class="fas fa-chevron-down"></i>
+                            <span id="selected-model-label">Gemini 2.5 Flash</span> <i class="fas fa-chevron-down"></i>
                         </button>
                         <div id="model-dropdown-list" class="model-dropdown" style="display: none;">
                             <!-- Items will be populated by JS -->
