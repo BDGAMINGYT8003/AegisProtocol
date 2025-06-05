@@ -1,619 +1,723 @@
-let isSearchModeActive = false;
-// Removed: attachedImageBase64, attachedImageMimeType, fullDataUrlForPreview
-let currentImageData = null; // Will store { mimeType, base64Data, dataURLForPreview }
-let currentModelId = "gemini-2.5-flash-preview-05-20"; // Default model
-const availableModels = [
-    {
-        id: "gemini-2.5-flash-preview-05-20",
-        label: "Aegis Core Pro",
-        capabilities: { think: true, search: true, attach: true }
-    },
-    {
-        id: "gemini-2.0-flash",
-        label: "Aegis Core",
-        capabilities: { think: false, search: true, attach: true }
-    },
-    {
-        id: "gemini-2.0-flash-lite",
-        label: "Aegis Lite",
-        shortLabel: "Aegis Lite",
-        capabilities: { think: false, search: false, attach: true }
-    }
-];
-const GEMINI_API_KEY = "AIzaSyCL0lyAzof7p-R8d8QhExCwNWiZE0WiaXQ";
+// --- DOM Elements ---
+const chatWindow = document.getElementById('chat-window');
+const userInput = document.getElementById('user-input');
+const sendButton = document.getElementById('send-button');
+const imageUploadInput = document.getElementById('image-upload-input');
+const uploadButton = document.getElementById('upload-button');
+const newChatButton = document.getElementById('new-chat-btn');
+const historyIcon = document.getElementById('history-icon');
+const historyPanel = document.getElementById('history-panel');
+const historyCloseButton = document.getElementById('history-close-btn');
+const historyList = document.getElementById('history-list');
+const imagePreviewContainer = document.getElementById('image-preview-container');
+const imagePreview = document.getElementById('image-preview');
+const removeImageBtn = document.getElementById('remove-image-btn');
+const initialGreeting = document.getElementById('initial-greeting');
+const thinkingIndicator = document.createElement('div');
+thinkingIndicator.classList.add('message', 'assistant-message', 'thinking');
+thinkingIndicator.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
 
-// Initialize Marked.js options
+let currentChatId = null;
+let db;
+
+// --- API Configuration ---
+const apiKey = 'YOUR_API_KEY'; // Replace with your actual API key
+const modelName = 'gemini-1.5-flash-latest'; // Or your desired model
+const apiUrlBase = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}`;
+const streamApiUrl = `${apiUrlBase}:streamGenerateContent?key=${apiKey}&alt=sse`;
+
+const generationConfig = {
+    temperature: 0.7,
+    topK: 1,
+    topP: 1,
+    maxOutputTokens: 2048,
+    // stopSequences: [], // Add if needed
+};
+
+const safetySettings = [
+    { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+    { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+    { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+    { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+];
+
+const systemInstruction = {
+    role: "system",
+    parts: [{ text: "You are ChoraAI, a helpful and friendly assistant. Your responses should be informative, concise, and engaging. Format your responses using basic markdown (bold, italics) where appropriate to enhance readability. You can also include lists if it helps clarify information. Avoid overly long paragraphs. For general, casual conversations not related to specific data lookups, keep your responses relatively short and conversational." }]
+};
+
+const cryptoSystemInstruction = {
+    role: "system",
+    parts: [{ text: `You are ChoraAI. The user is asking about a cryptocurrency. Please respond using the following Markdown format, filling it with plausible example data. Clearly state that the data is illustrative and not real-time.
+---
+{{Coin Name}} ({{Symbol}})
+- Current Price: $\{{Current Price}}
+- Market Cap: $\{{Market Cap}}
+- 24h Trading Volume: $\{{24h Trading Volume}}
+- Price Change (24h): {{24h Price Change}}%
+- All-Time High: $\{{All-Time High}} (on {{ATH Date}})
+- Percent from ATH: {{Percent from ATH}}%
+- Total Supply: {{Total Supply}} {{Symbol}}
+- Max Supply: {{Max Supply}} {{Symbol}}
+
+Key Price Movements:
+- 1 Hour Change: {{1h Change}}%
+- 24 Hour Change: {{24h Change}}%
+- 7 Day Change: {{7d Change}}%
+- 30 Day Change: {{30d Change}}%
+- 1 Year Change: {{1y Change}}%
+
+Future Unlocks: {{Future Unlock Info}}
+---
+If you need additional details or have further questions, feel free to ask! **Remember to state that this data is illustrative.**`}]
+};
+
+const cryptoKeywords = [
+    '$btc', '$eth', 'bitcoin', 'ethereum', ' price of ', ' market cap of ', ' tokenomics', 'crypto currency',
+    'buy bitcoin', 'sell bitcoin', 'bitcoin price', 'ethereum price', 'dogecoin price', 'shiba inu price',
+    'cardano price', 'solana price', 'xrp price', 'polkadot price', 'litecoin price', 'binance coin price',
+    'what is the price of', 'how to buy', 'trading volume of', 'details for token'
+];
+
+let chatHistory = []; // To store the conversation history for the current session (for API calls)
+
+// --- Sound Effects ---
+const sendSound = new Audio('send_sound.mp3'); // Replace with actual path if different
+const receiveSound = new Audio('receive_sound.mp3'); // Replace with actual path if different
+sendSound.volume = 0.3;
+receiveSound.volume = 0.3;
+
+// --- Haptics ---
+function vibrate(duration) {
+    if (navigator.vibrate) {
+        navigator.vibrate(duration);
+    }
+}
+
+// --- Markdown Configuration ---
+// Assuming marked.js is included in index.html
 if (typeof marked !== 'undefined') {
     marked.setOptions({
-        gfm: true,          // Enable GitHub Flavored Markdown
-        breaks: false,       // CHANGED FROM true
-        pedantic: false     // Be less strict about Markdown syntax
-        // Note: `sanitize` option is deprecated. For robust sanitization, an external library
-        // like DOMPurify would be needed in conjunction with Marked.js.
-        // Relying on Marked.js's default escaping for now.
+        breaks: true, // Convert GFM line breaks to <br>
+        gfm: true, // Enable GitHub Flavored Markdown
+        // sanitize: true, // IMPORTANT: If you allow user input that might contain HTML/JS, enable sanitization or use a dedicated sanitizer.
+                       // For this project, only AI responses are parsed, so direct sanitization here might be optional
+                       // if the AI's output is trusted or sanitized server-side.
+                       // However, for general web apps, always sanitize user-generated content.
     });
 } else {
-    console.error("Marked.js library not loaded. Markdown rendering will not be available.");
+    console.warn("marked.js library not found. Markdown rendering will be basic.");
 }
 
-// The above key is now set. The placeholder comment below can be removed or kept for reference.
-// Assume GEMINI_API_KEY will be set globally, e.g.
-// const GEMINI_API_KEY = "YOUR_ACTUAL_API_KEY"; // Needs to be set by the user/environment
 
-function updateButtonCapabilities(capabilities) {
-    const thinkButton = document.querySelector('.action-button i.fa-lightbulb')?.closest('.action-button');
-    const searchButton = document.querySelector('.action-button i.fa-globe')?.closest('.action-button');
-    // const attachButton = document.querySelector('.action-button i.fa-paperclip')?.closest('.action-button');
+// --- Initialization ---
+document.addEventListener('DOMContentLoaded', () => {
+    initializeApp();
+});
 
-    if (thinkButton) {
-        thinkButton.disabled = !capabilities.think;
-    }
-    if (searchButton) {
-        searchButton.disabled = !capabilities.search;
-        if (!capabilities.search && isSearchModeActive) {
-            isSearchModeActive = false;
-            searchButton.classList.remove('search-button-active');
-            console.log("Search mode deactivated due to model change not supporting search.");
+async function initializeApp() {
+    try {
+        await openDB();
+        loadChatHistory();
+        attachEventListeners();
+        userInput.focus();
+        // displayWelcomeMessage(); // Or some initial state setup
+    } catch (error) {
+        console.error("Initialization failed:", error);
+        if (initialGreeting) {
+            initialGreeting.innerHTML = `<h1 class='error-message'>Error initializing storage. Chat history may not work reliably.</h1>`;
+            initialGreeting.style.display = 'flex'; // Ensure it's visible
         }
-    }
-    // if (attachButton) { // Example for attach capability
-    //     attachButton.disabled = !capabilities.attach;
-    // }
-    console.log("Button capabilities updated for current model:", capabilities);
-}
-
-function clearAttachedImage() { // Renamed and refactored
-    const imageUploadInput = document.getElementById('image-upload-input'); // Keep for resetting value
-    const attachmentPreviewArea = document.getElementById('attachment-preview-area');
-    const attachmentThumbnail = document.getElementById('attachment-thumbnail');
-
-    currentImageData = null;
-    if (attachmentPreviewArea) attachmentPreviewArea.style.display = 'none';
-    if (attachmentThumbnail) attachmentThumbnail.src = '#';
-    if (imageUploadInput) imageUploadInput.value = null;
-    console.log("Attachment cleared.");
-}
-
-function createRipple(event) {
-    const button = event.currentTarget;
-
-    const ripple = document.createElement("span");
-    const diameter = Math.max(button.clientWidth, button.clientHeight);
-    const radius = diameter / 2;
-
-    ripple.style.width = ripple.style.height = `${diameter}px`;
-    // Get click position relative to the button
-    const rect = button.getBoundingClientRect();
-    ripple.style.left = `${event.clientX - rect.left - radius}px`;
-    ripple.style.top = `${event.clientY - rect.top - radius}px`;
-
-    ripple.classList.add("ripple");
-
-    // Check if there's an old ripple and remove it (though with timeout this might not be strictly necessary)
-    const oldRipple = button.querySelector(".ripple");
-    if (oldRipple) {
-        oldRipple.remove();
-    }
-
-    button.appendChild(ripple);
-
-    // Remove ripple after animation
-    setTimeout(() => {
-        if (ripple.parentElement) { // Check if still part of DOM
-            ripple.remove();
+        // Disable input fields if initialization fails
+        if (userInput) {
+            userInput.placeholder = "Initialization failed. Cannot save chats.";
+            userInput.disabled = true;
         }
-    }, 600); // Match animation duration
+        if (sendButton) sendButton.disabled = true;
+        if (uploadButton) uploadButton.disabled = true;
+        // Consider also disabling other features that rely on DB.
+    }
 }
 
-async function callGeminiAPI(inputText, thinkingBudget = 0, enableSearchTool = false) { // Removed image params
-    console.log("callGeminiAPI: Received parameters", {
-        inputText: inputText,
-        thinkingBudget: thinkingBudget,
-        enableSearchTool: enableSearchTool,
-        currentImageData_global: currentImageData ? { mimeType: currentImageData.mimeType, base64Data: currentImageData.base64Data.substring(0,30) + "..."} : null
+// --- Event Listeners ---
+function attachEventListeners() {
+    sendButton.addEventListener('click', sendMessage);
+    userInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
     });
-    const responseArea = document.getElementById('api-response-area');
-    const spinnerContainer = responseArea ? responseArea.querySelector('.spinner-container') : null;
-    const responseContentDiv = responseArea ? responseArea.querySelector('.response-content') : null;
+    userInput.addEventListener('input', autoGrowTextarea);
+    uploadButton.addEventListener('click', () => imageUploadInput.click());
+    imageUploadInput.addEventListener('change', handleFileChange);
+    removeImageBtn.addEventListener('click', clearImageSelection);
+    newChatButton.addEventListener('click', startNewChat);
+    historyIcon.addEventListener('click', showHistoryPanel);
+    historyCloseButton.addEventListener('click', hideHistoryPanel);
 
-    if (typeof GEMINI_API_KEY === 'undefined' || !GEMINI_API_KEY) {
-        console.error("GEMINI_API_KEY is not set. Please set it before calling the API.");
-        alert("GEMINI_API_KEY is not set. Please configure it in the script.");
-        if (responseContentDiv && responseArea) { // Ensure responseContentDiv exists
-            responseContentDiv.innerText = "API Key is not configured. Please set GEMINI_API_KEY in the script.";
-            responseContentDiv.style.color = 'var(--google-red)';
-            if(spinnerContainer) spinnerContainer.style.display = 'none';
-            responseContentDiv.style.display = 'block';
-            responseArea.style.display = 'block';
+    // Click outside to close history panel
+    document.addEventListener('click', (event) => {
+        // Ensure historyPanel is initialized and the click is outside relevant elements
+        if (historyPanel && historyPanel.style.display === 'flex' &&
+            !historyPanel.contains(event.target) &&
+            !historyIcon.contains(event.target)) {
+            // Check if the click target is part of an element that should NOT close the panel
+            // This prevents closing when interacting with elements that might open or control other UI parts.
+            // Example: if other buttons on the main page should not close history, add them here.
+            // For now, only historyPanel and historyIcon are explicitly excluded from closing.
+            hideHistoryPanel();
         }
-        return null;
+    });
+}
+
+// --- Database Operations (IndexedDB) ---
+async function openDB() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open('ChoraAIChatDB', 1);
+        request.onupgradeneeded = (event) => {
+            db = event.target.result;
+            if (!db.objectStoreNames.contains('chats')) {
+                db.createObjectStore('chats', { keyPath: 'id', autoIncrement: true });
+            }
+        };
+        request.onsuccess = (event) => {
+            db = event.target.result;
+            resolve(db);
+        };
+        request.onerror = (event) => {
+            console.error("Database error: ", event.target.errorCode);
+            reject(event.target.errorCode);
+        };
+    });
+}
+
+async function addChat(chatData) {
+    return new Promise((resolve, reject) => {
+        if (!db) {
+             console.error("DB not initialized");
+             return reject("DB not initialized");
+        }
+        const transaction = db.transaction(['chats'], 'readwrite');
+        const store = transaction.objectStore('chats');
+        const request = store.add({ ...chatData, timestamp: new Date() });
+        request.onsuccess = (event) => resolve(event.target.result); // Returns new chat ID
+        request.onerror = (event) => reject(event.target.error);
+    });
+}
+
+async function updateChat(chatId, message) {
+     return new Promise((resolve, reject) => {
+        if (!db) {
+             console.error("DB not initialized");
+             return reject("DB not initialized");
+        }
+        const transaction = db.transaction(['chats'], 'readwrite');
+        const store = transaction.objectStore('chats');
+        const getRequest = store.get(chatId);
+        getRequest.onsuccess = () => {
+            const chat = getRequest.result;
+            if (chat) {
+                chat.messages.push(message);
+                chat.timestamp = new Date(); // Update timestamp for recent sorting
+                const putRequest = store.put(chat);
+                putRequest.onsuccess = () => resolve(putRequest.result);
+                putRequest.onerror = (event) => reject(event.target.error);
+            } else {
+                reject('Chat not found');
+            }
+        };
+        getRequest.onerror = (event) => reject(event.target.error);
+    });
+}
+
+async function getChat(chatId) {
+    return new Promise((resolve, reject) => {
+        if (!db) {
+             console.error("DB not initialized");
+             return reject("DB not initialized");
+        }
+        const transaction = db.transaction(['chats'], 'readonly');
+        const store = transaction.objectStore('chats');
+        const request = store.get(chatId);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = (event) => reject(event.target.error);
+    });
+}
+
+async function getAllChats() {
+    return new Promise((resolve, reject) => {
+        if (!db) {
+             console.error("DB not initialized");
+             return reject("DB not initialized");
+        }
+        const transaction = db.transaction(['chats'], 'readonly');
+        const store = transaction.objectStore('chats');
+        const request = store.getAll();
+        request.onsuccess = () => resolve(request.result.sort((a, b) => b.timestamp - a.timestamp)); // Sort by newest first
+        request.onerror = (event) => reject(event.target.error);
+    });
+}
+
+async function deleteChatFromDB(chatId) {
+    return new Promise((resolve, reject) => {
+        if (!db) {
+             console.error("DB not initialized");
+             return reject("DB not initialized");
+        }
+        const transaction = db.transaction(['chats'], 'readwrite');
+        const store = transaction.objectStore('chats');
+        const request = store.delete(chatId);
+        request.onsuccess = () => resolve();
+        request.onerror = (event) => reject(event.target.error);
+    });
+}
+
+
+// --- Chat Functionality ---
+async function sendMessage() {
+    const messageText = userInput.value.trim();
+    const imageFile = imageUploadInput.files[0];
+
+    if (!messageText && !imageFile) return;
+
+    if (initialGreeting) initialGreeting.style.display = 'none';
+    sendSound.play();
+    vibrate(50);
+
+    let userMessageParts = [];
+    if (messageText) {
+        userMessageParts.push({ text: messageText });
     }
 
-    if (responseArea && spinnerContainer && responseContentDiv) {
-        responseContentDiv.innerHTML = ''; // Clear previous content
-        responseContentDiv.style.display = 'none'; // Hide content area
-        spinnerContainer.style.display = 'flex'; // Show spinner (use flex due to its styling)
-        responseArea.style.display = 'block'; // Ensure main area is visible
+    let displayedUserImage = null; // For UI display
+    let apiUserImagePayload = null; // For API
+
+    if (imageFile) {
+        try {
+            const imageBase64 = await readFileAsDataURL(imageFile);
+            displayedUserImage = imageBase64; // For immediate display
+            // For API, extract only base64 content, not the full data URL prefix
+            apiUserImagePayload = {
+                mimeType: imageFile.type,
+                inlineData: imageBase64.split(',')[1]
+            };
+            userMessageParts.push({ inlineData: apiUserImagePayload });
+        } catch (error) {
+            console.error("Error reading image file:", error);
+            displayMessage("Error sending image. Please try again.", 'system');
+            return;
+        }
     }
 
-    // const MODEL_ID = "gemini-2.5-flash-preview-05-20"; // REMOVE THIS LINE
-    // The global 'currentModelId' variable (defined outside) will be used here.
-    const GENERATE_CONTENT_API = "streamGenerateContent";
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${currentModelId}:${GENERATE_CONTENT_API}?key=${GEMINI_API_KEY}`;
+    displayMessage(messageText, 'user', displayedUserImage, imageFile ? imageFile.name : null);
+    chatHistory.push({ role: "user", parts: userMessageParts });
 
-    const requestBody = {
-        contents: [{ role: "user", parts: [] }], // Parts will be populated below
-        generationConfig: {
-            thinkingConfig: {
-                thinkingBudget: thinkingBudget,
-            },
-            temperature: 0.7,
-            topP: 0.8,
-            topK: 40,
-            maxOutputTokens: 8192,
-            responseMimeType: "text/plain", // Keep as text/plain for Markdown parsing
-        },
-        systemInstruction: {
-            parts: [{
-                text: "You are Aegis Protocol, an AI-driven gateway that unites DeFi, GameFi, and Real-World Assets under a single intelligent framework. Your tasks include providing real-time token analytics, automating asset tokenization validation, and optimizing gaming economies. Uphold the principles of transparency, interpretability, and consumer protection. When offering recommendations, cite on-chain data points, market trends, and risk assessments. Always ensure users can trace how your conclusions were derived. Use proper markdown formatting including headings, lists, code blocks, tables, and other formatting elements."
-            }]
-        }
+    // Save user message to DB
+    const userMessageForDB = {
+        role: 'user',
+        content: messageText,
+        // Store image as base64 for simplicity in DB, or could be a reference/path
+        ...(displayedUserImage && { image: displayedUserImage, imageName: imageFile.name })
     };
 
-    if (enableSearchTool) {
-        requestBody.tools = [ { "urlContext": {} }, { "googleSearch": {} } ];
+    if (currentChatId) {
+        await updateChat(currentChatId, userMessageForDB);
+    } else {
+        // Create a title for the new chat based on the first message
+        const title = messageText.substring(0, 30) || (imageFile ? "Image chat" : "New Chat");
+        const newChatData = { title: title, messages: [userMessageForDB] };
+        currentChatId = await addChat(newChatData);
+        loadChatHistory(); // Refresh history panel
     }
 
-    const parts = [];
-    
-    // Enhanced prompt to encourage rich markdown formatting with Aegis Protocol branding
-    const markdownPrompt = `You are Aegis Protocol, an AI-driven gateway specializing in DeFi, GameFi, and Real-World Assets. Provide comprehensive analysis with rich markdown formatting including headings, bullet points, code blocks, tables, and other elements for enhanced readability.
+    clearInput();
+    setInputState(false); // Disable input while AI is thinking
+    showThinkingIndicator();
 
-User Query: ${inputText || ""}
+    // Prepare API request body
+    // Ensure chatHistory for API does not grow indefinitely if not handled by session logic
+    const apiContents = [...chatHistory];
+    let activeSystemInstruction = systemInstruction;
 
-Please provide a detailed crypto/blockchain-focused response using markdown elements where appropriate.`;
-    
-    let textToSend = markdownPrompt;
-
-    if (currentImageData && currentImageData.base64Data && currentImageData.mimeType) {
-        parts.push({ text: textToSend });
-        parts.push({
-            inline_data: {
-                mime_type: currentImageData.mimeType,
-                data: currentImageData.base64Data
-            }
-        });
-        console.log(`callGeminiAPI: Preparing multimodal request with model: ${currentModelId}`, { text: inputText, imageMime: currentImageData.mimeType });
-    } else if (inputText) {
-        parts.push({ text: textToSend });
+    // Crypto keyword detection
+    const lowerMessageText = messageText.toLowerCase();
+    let isCryptoQuery = false;
+    for (const keyword of cryptoKeywords) {
+        if (lowerMessageText.includes(keyword)) {
+            isCryptoQuery = true;
+            break;
+        }
     }
 
-    if (parts.length === 0) {
-        console.error("No content (text or image) to send to API.");
-        if (responseContentDiv && responseArea && spinnerContainer) { // Ensure spinnerContainer is defined here too
-            responseContentDiv.innerText = "Please provide text or an image to send.";
-            responseContentDiv.style.color = 'var(--google-red)';
-            spinnerContainer.style.display = 'none';
-            responseContentDiv.style.display = 'block';
-            responseArea.style.display = 'block';
-        }
-        return null;
+    if (isCryptoQuery) {
+        activeSystemInstruction = cryptoSystemInstruction;
+        console.log("Crypto keyword detected. Using crypto system instruction.");
     }
-    requestBody.contents[0].parts = parts;
-    console.log("callGeminiAPI: Constructed parts for API request", JSON.stringify(parts, (key, value) => {
-        if (key === 'data' && typeof value === 'string' && value.length > 50) { // Snippet for base64 data in parts
-            return value.substring(0, 30) + "... (truncated)";
-        }
-        return value;
-    }, 2));
-    console.log("callGeminiAPI: Full requestBody for API", JSON.stringify(requestBody, (key, value) => {
-        if (key === 'data' && typeof value === 'string' && value.length > 50) { // Snippet for base64 data in requestBody
-            return value.substring(0, 30) + "... (truncated)";
-        }
-        return value;
-    }, 2));
+
+    // Prepend system instruction if not already there or if it's different
+    if (apiContents.length === 0 || apiContents[0].role !== "system") {
+        apiContents.unshift(activeSystemInstruction);
+    } else if (apiContents[0].role === "system" && isCryptoQuery) {
+        // If it's a crypto query and a system instruction exists, replace it with crypto one
+        // This assumes we want to override any existing system instruction for crypto queries.
+        apiContents[0] = cryptoSystemInstruction;
+    } else if (apiContents[0].role === "system" && !isCryptoQuery && apiContents[0] !== systemInstruction) {
+        // If not a crypto query but the current system instruction is the crypto one (e.g. from a previous turn), revert to default
+        apiContents[0] = systemInstruction;
+    }
+
+
+    const requestBody = {
+        contents: apiContents,
+        generationConfig,
+        safetySettings,
+    };
 
     try {
-        const response = await fetch(apiUrl, {
+        await getAIResponseStreaming(requestBody);
+    } catch (error) {
+        console.error("Error getting AI response:", error);
+        hideThinkingIndicator();
+        displayMessage(error.message || "Sorry, I couldn't connect to the AI.", 'system');
+        chatHistory.push({ role: "model", parts: [{ text: `Error: ${error.message}` }] }); // Save error as AI response
+        if (currentChatId) {
+            await updateChat(currentChatId, { role: 'system', content: `Error: ${error.message}` });
+        }
+    } finally {
+        setInputState(true); // Re-enable input
+        userInput.focus();
+    }
+}
+
+function displayMessage(text, role, imageUrl = null, imageName = null, elementToUpdate = null) {
+    let messageElement = elementToUpdate;
+    if (!messageElement) {
+        messageElement = document.createElement('div');
+        messageElement.classList.add('message', `${role}-message`);
+        chatWindow.appendChild(messageElement);
+    }
+
+    let contentHTML = '';
+    if (text) {
+        if (typeof marked !== 'undefined') {
+            contentHTML += marked.parse(text);
+        } else {
+            // Fallback basic formatting if marked.js is not available
+            contentHTML += text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                               .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                               .replace(/\n/g, '<br>');
+        }
+    }
+
+    if (imageUrl && !elementToUpdate) { // Only add image if it's a new message
+        const uniqueId = `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        contentHTML += `<div class="message-image-container">
+                            <img src="${imageUrl}" alt="${imageName || 'Uploaded Image'}" class="message-image" id="${uniqueId}">
+                            <p class="image-name">${imageName || 'Image'}</p>
+                        </div>`;
+        // Add click listener for full screen view (basic implementation)
+        setTimeout(() => {
+            const imgElement = document.getElementById(uniqueId);
+            if (imgElement) {
+                imgElement.addEventListener('click', () => {
+                    if (document.fullscreenElement) document.exitFullscreen();
+                    else imgElement.requestFullscreen().catch(err => console.error(err));
+                });
+            }
+        }, 0);
+    }
+
+    messageElement.innerHTML = contentHTML; // Set or update content
+
+    if (!elementToUpdate) { // Only scroll for new messages
+        chatWindow.scrollTop = chatWindow.scrollHeight;
+    }
+
+    if (initialGreeting && initialGreeting.style.display !== 'none') {
+        initialGreeting.style.display = 'none';
+    }
+    return messageElement;
+}
+
+async function getAIResponseStreaming(requestBody) {
+    if (apiKey === 'YOUR_API_KEY') {
+        hideThinkingIndicator();
+        displayMessage("Please set your API key in script.js to use the AI.", 'system');
+        chatHistory.push({ role: "model", parts: [{text: "API Key not set."}] });
+        if(currentChatId) await updateChat(currentChatId, {role: 'system', content: "API Key not set."});
+        return;
+    }
+
+    hideThinkingIndicator(); // Global thinking indicator removed once streaming starts or an immediate error.
+    const aiMessageElement = displayMessage("", 'assistant'); // Create empty bubble for AI response
+    let currentText = "";
+    let finalAiMessageParts = []; // To store parts for chatHistory
+
+    try {
+        const response = await fetch(streamApiUrl, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(requestBody),
         });
 
-        if (spinnerContainer) spinnerContainer.style.display = 'none'; // Hide spinner
-
         if (!response.ok) {
             const errorText = await response.text();
-            console.error("API Error:", response.status, errorText);
-            alert(`API Error: ${response.status}. Check console for details.`);
-            if (responseContentDiv) { // Update to use responseContentDiv
-                responseContentDiv.innerText = `Sorry, something went wrong. \nError: ${response.status}. See console for details.`;
-                responseContentDiv.style.color = 'var(--google-red)';
-                responseContentDiv.style.display = 'block';
-            }
-            return null;
+            console.error("API Error Response:", errorText);
+            throw new Error(`API request failed: ${response.status} ${response.statusText}. ${errorText}`);
         }
 
-        const data = await response.text();
-        console.log("API Success (raw):", data);
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
 
-        if (responseContentDiv) {
-            let cleanedData = data;
-            if (data.startsWith(")]}'\n")) { cleanedData = data.substring(5); }
-            let finalText = cleanedData;
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
             
-            // Enhanced JSON parsing for streaming responses
-            try {
-                if ((cleanedData.startsWith("{") && cleanedData.endsWith("}")) || (cleanedData.startsWith("[") && cleanedData.endsWith("]"))) {
-                    const jsonData = JSON.parse(cleanedData);
-                    if (jsonData && jsonData.text) { 
-                        finalText = jsonData.text; 
-                    }
-                    else if (Array.isArray(jsonData) && jsonData.length > 0) {
-                        let accumulatedText = "";
-                        jsonData.forEach(item => {
-                            if (item.candidates && item.candidates[0] && item.candidates[0].content && item.candidates[0].content.parts && item.candidates[0].content.parts[0] && item.candidates[0].content.parts[0].text) {
-                                accumulatedText += item.candidates[0].content.parts[0].text;
-                            }
-                        });
-                        if (accumulatedText) finalText = accumulatedText;
-                    }
-                } else {
-                    // Handle streaming JSON-like responses
-                    const lines = cleanedData.trim().split('\n');
-                    let accumulatedText = "";
-                    lines.forEach(line => {
-                        if (line.trim() && !line.trim().startsWith(',')) {
-                            try {
-                                const parsedLine = JSON.parse(line.replace(/,$/, ''));
-                                if (parsedLine.candidates && parsedLine.candidates[0] && parsedLine.candidates[0].content && parsedLine.candidates[0].content.parts && parsedLine.candidates[0].content.parts[0] && parsedLine.candidates[0].content.parts[0].text) {
-                                    accumulatedText += parsedLine.candidates[0].content.parts[0].text;
-                                }
-                            } catch (lineError) {
-                                // Skip invalid JSON lines
+            // Process Server-Sent Events (SSE)
+            let eolIndex;
+            while ((eolIndex = buffer.indexOf('\n')) >= 0) {
+                const line = buffer.substring(0, eolIndex).trim();
+                buffer = buffer.substring(eolIndex + 1);
+
+                if (line.startsWith('data: ')) {
+                    const jsonData = JSON.parse(line.substring(5)); // Skip 'data: '
+                    if (jsonData.candidates && jsonData.candidates.length > 0) {
+                        const content = jsonData.candidates[0].content;
+                        if (content && content.parts && content.parts.length > 0) {
+                            const part = content.parts[0];
+                            if (part.text) {
+                                currentText += part.text;
+                                finalAiMessageParts.push({ text: part.text }); // Store for history
+                                displayMessage(currentText, 'assistant', null, null, aiMessageElement);
+                                vibrate(15); // Haptic feedback per chunk
+                                chatWindow.scrollTop = chatWindow.scrollHeight; // Keep scrolled to bottom
                             }
                         }
-                    });
-                    if (accumulatedText) finalText = accumulatedText;
+                    }
                 }
-            } catch (e) { 
-                console.warn("Response was not valid JSON or a known structure, displaying as plain text.", e); 
             }
-
-            // Enhanced markdown processing
-            if (typeof marked !== 'undefined') {
-                // Post-process the text to ensure better markdown formatting
-                let processedText = finalText
-                    .replace(/\n\n\n+/g, '\n\n') // Remove excessive line breaks
-                    .replace(/^\s+/gm, '') // Remove leading whitespace from lines
-                    .trim();
-                
-                // Ensure proper spacing around headers
-                processedText = processedText.replace(/^(#+\s.+)$/gm, '\n$1\n');
-                
-                // Parse and render markdown
-                responseContentDiv.innerHTML = marked.parse(processedText);
-                
-                // Add copy buttons to code blocks
-                addCopyButtonsToCodeBlocks(responseContentDiv);
-                
-                // Smooth scroll to the response area
-                setTimeout(() => {
-                    responseArea.scrollIntoView({ 
-                        behavior: 'smooth', 
-                        block: 'start' 
-                    });
-                }, 100);
-            } else {
-                console.error("Marked.js library not loaded. Displaying as plain text.");
-                responseContentDiv.innerText = finalText;
-            }
-            responseContentDiv.style.display = 'block';
         }
-        return data;
+        if (buffer.trim().startsWith('data: ')) { // Process any remaining buffer
+             const jsonData = JSON.parse(buffer.trim().substring(5));
+             if (jsonData.candidates && jsonData.candidates.length > 0) {
+                const content = jsonData.candidates[0].content;
+                if (content && content.parts && content.parts.length > 0) {
+                    const part = content.parts[0];
+                    if (part.text) {
+                        currentText += part.text;
+                        finalAiMessageParts.push({ text: part.text });
+                        displayMessage(currentText, 'assistant', null, null, aiMessageElement);
+                         chatWindow.scrollTop = chatWindow.scrollHeight;
+                    }
+                }
+            }
+        }
+
+
+        if (currentText.trim() === "") { // If AI returned empty or only whitespace
+            displayMessage("I received an empty response.", 'assistant', null, null, aiMessageElement);
+            finalAiMessageParts.push({ text: "I received an empty response."});
+        }
+
+        receiveSound.play();
+        vibrate(75);
 
     } catch (error) {
-        if (spinnerContainer) spinnerContainer.style.display = 'none'; // Hide spinner
-        console.error("Fetch Error:", error);
-        alert("Fetch Error. Check console for details.");
-        if (responseContentDiv) { // Update to use responseContentDiv
-            responseContentDiv.innerText = "Failed to fetch response. Please check your connection or API key.";
-            responseContentDiv.style.color = 'var(--google-red)';
-            responseContentDiv.style.display = 'block';
+        console.error("Streaming API error:", error);
+        displayMessage(`Error: ${error.message}`, 'assistant', null, null, aiMessageElement);
+        finalAiMessageParts.push({ text: `Error: ${error.message}` }); // Store error for history
+    } finally {
+        chatHistory.push({ role: "model", parts: finalAiMessageParts.length > 0 ? finalAiMessageParts : [{text: "(No textual response)"}] });
+        if (currentChatId) {
+            // Consolidate parts into a single content string for DB
+            const fullAssistantContent = finalAiMessageParts.map(p => p.text).join("");
+            await updateChat(currentChatId, { role: 'assistant', content: fullAssistantContent || "(No textual response)" });
         }
-        return null;
+        // Ensure chat history doesn't grow excessively without a session refresh mechanism
+        if (chatHistory.length > 20) { // Example limit
+            // chatHistory.splice(1, chatHistory.length - 10); // Keep system prompt + last 10 exchanges
+            // Or simply reset for new context if too long and no explicit session management
+            // For this example, we'll let it grow but log a warning.
+            console.warn("Chat history for API is growing large. Consider session management.");
+        }
     }
 }
 
-// Existing script content follows...
-document.querySelectorAll('.action-button, .model-selector, .send-button, .legacy-search-link').forEach(button => {
-        button.addEventListener('click', (e) => {
-        // Apply ripple to specific button types
-        if (button.classList.contains('action-button') ||
-            button.classList.contains('send-button') ||
-            button.classList.contains('model-selector')) {
-            createRipple(e);
-        }
 
-        e.preventDefault(); // Keep this early
-
-        const askAnythingDiv = document.querySelector('.ask-anything-text');
-        const inputText = askAnythingDiv.innerText.trim();
-
-        // Search button (fa-globe)
-        if (button.classList.contains('action-button') && button.querySelector('i.fa-globe')) {
-            isSearchModeActive = !isSearchModeActive;
-            button.classList.toggle('search-button-active');
-            console.log("Search mode toggled:", isSearchModeActive);
-        }
-        // Think button
-        else if (button.classList.contains('action-button') && button.querySelector('i.fa-lightbulb')) {
-            // console.log("Think button clicked"); // Optional debug log
-            if (!inputText && !currentImageData) {
-                alert("Please enter something or attach an image to think about.");
-                console.log("Input and attachment are empty, 'Think' button not calling API.");
-            } else {
-                console.log("Think Button: Before callGeminiAPI", {
-                    inputText: inputText,
-                    isSearchModeActive: isSearchModeActive,
-                    currentImageData_global: currentImageData ? { mimeType: currentImageData.mimeType, base64Data: currentImageData.base64Data.substring(0,30) + "..." } : null
-                });
-                callGeminiAPI(inputText, 24576, isSearchModeActive);
-                // NOTE: "Think" button intentionally does not clear attachment or text.
-            }
-        }
-        // Send button
-        else if (button.classList.contains('send-button')) {
-            // console.log("Send button clicked. Input:", inputText); // Optional debug log
-            if (!inputText && !currentImageData) {
-                alert("Please type something or attach an image to send.");
-                console.log("Input and attachment are empty, 'Send' button not calling API.");
-            } else {
-                console.log("Send Button: Before callGeminiAPI", {
-                    inputText: inputText,
-                    isSearchModeActive: isSearchModeActive,
-                    currentImageData_global: currentImageData ? { mimeType: currentImageData.mimeType, base64Data: currentImageData.base64Data.substring(0,30) + "..." } : null
-                });
-                callGeminiAPI(inputText, 0, isSearchModeActive);
-                // Clear input after sending
-                askAnythingDiv.innerText = '';
-                clearAttachedImage(); // Clear attachment after sending for "Send" button
-            }
-        }
-        // Attach button (fa-paperclip)
-        else if (button.classList.contains('action-button') && button.querySelector('i.fa-paperclip')) {
-            const imageUploadInput = document.getElementById('image-upload-input');
-            if (imageUploadInput) {
-                imageUploadInput.click(); // Trigger file picker dialog
-            } else {
-                console.error("Image upload input element not found!");
-            }
-        }
-        // Model selector
-        else if (button.classList.contains('model-selector')) {
-            const dropdown = document.getElementById('model-dropdown-list');
-            if (dropdown) {
-                const isVisible = dropdown.style.display === 'block';
-                dropdown.style.display = isVisible ? 'none' : 'block';
-                console.log("Model dropdown toggled:", !isVisible);
-            }
-        }
-        // Legacy search link
-        else if (button.classList.contains('legacy-search-link')) {
-            alert("This would redirect to legacy Google Search in a real implementation.");
-        }
-    });
-});
-
-// Model dropdown population and handling
-document.addEventListener('DOMContentLoaded', () => {
-    const dropdown = document.getElementById('model-dropdown-list');
-    const selectedModelLabel = document.getElementById('selected-model-label');
-
-    if (dropdown) {
-        // Populate dropdown
-        availableModels.forEach(model => {
-            const item = document.createElement('div');
-            item.className = 'model-dropdown-item';
-            if (model.id === currentModelId) {
-                item.classList.add('selected-model-item');
-            }
-            item.textContent = model.label;
-            item.dataset.modelId = model.id;
-
-            item.addEventListener('click', () => {
-                // Update selected model
-                currentModelId = model.id;
-                // Only use short label for Flash-Lite
-                if (selectedModelLabel) {
-                    selectedModelLabel.textContent = (model.id === "gemini-2.0-flash-lite") ? model.shortLabel : model.label;
-                }
-
-                // Update UI to reflect selection
-                document.querySelectorAll('.model-dropdown-item').forEach(i => i.classList.remove('selected-model-item'));
-                item.classList.add('selected-model-item');
-
-                // Update button capabilities
-                updateButtonCapabilities(model.capabilities);
-
-                // Hide dropdown
-                dropdown.style.display = 'none';
-                console.log("Model changed to:", model.label, "capabilities:", model.capabilities);
-            });
-
-            dropdown.appendChild(item);
-        });
-
-        // Initialize capabilities for default model
-        const defaultModel = availableModels.find(m => m.id === currentModelId);
-        if (defaultModel) {
-            updateButtonCapabilities(defaultModel.capabilities);
-        }
+function showThinkingIndicator(elementToAppendTo = chatWindow) {
+    if (elementToAppendTo === chatWindow && chatWindow.contains(thinkingIndicator)) {
+        // Already showing global thinking indicator
+        return;
     }
+    elementToAppendTo.appendChild(thinkingIndicator);
+    chatWindow.scrollTop = chatWindow.scrollHeight;
+}
 
-    // Close dropdown when clicking outside
-    document.addEventListener('click', (e) => {
-        const dropdown = document.getElementById('model-dropdown-list');
-        const modelSelector = document.querySelector('.model-selector');
-        
-        if (dropdown && modelSelector && !modelSelector.contains(e.target)) {
-            dropdown.style.display = 'none';
-        }
-    });
-});
+function hideThinkingIndicator(elementToRemoveFrom = chatWindow) {
+    if (elementToRemoveFrom.contains(thinkingIndicator)) {
+        elementToRemoveFrom.removeChild(thinkingIndicator);
+    }
+}
 
-// Image upload handling
-document.getElementById('image-upload-input')?.addEventListener('change', function(event) {
+
+function clearInput() {
+    userInput.value = '';
+    clearImageSelection();
+    autoGrowTextarea(); // Reset height and button state
+}
+
+// --- UI Enhancements ---
+function autoGrowTextarea() {
+    userInput.style.height = 'auto'; // Reset height
+    userInput.style.height = (userInput.scrollHeight) + 'px';
+    setInputState(userInput.value.trim() !== '' || imageUploadInput.files.length > 0);
+}
+
+function setInputState(hasContent) {
+    if (hasContent) {
+        sendButton.classList.add('active');
+        sendButton.disabled = false;
+    } else {
+        sendButton.classList.remove('active');
+        sendButton.disabled = true;
+    }
+}
+
+function handleFileChange(event) {
     const file = event.target.files[0];
     if (file) {
-        // Validate file type
-        if (!file.type.startsWith('image/')) {
-            alert('Please select a valid image file.');
-            return;
-        }
-
-        // Validate file size (e.g., 10MB limit)
-        const maxSize = 10 * 1024 * 1024; // 10MB
-        if (file.size > maxSize) {
-            alert('File size must be less than 10MB.');
-            return;
-        }
-
         const reader = new FileReader();
-        reader.onload = function(e) {
-            const dataURL = e.target.result;
-            const base64Data = dataURL.split(',')[1]; // Remove data:image/...;base64, prefix
-            
-            // Store image data globally
-            currentImageData = {
-                mimeType: file.type,
-                base64Data: base64Data,
-                dataURLForPreview: dataURL
-            };
-
-            // Show preview
-            const attachmentPreviewArea = document.getElementById('attachment-preview-area');
-            const attachmentThumbnail = document.getElementById('attachment-thumbnail');
-            
-            if (attachmentPreviewArea && attachmentThumbnail) {
-                attachmentThumbnail.src = dataURL;
-                attachmentPreviewArea.style.display = 'block';
-            }
-
-            console.log('Image uploaded:', {
-                name: file.name,
-                type: file.type,
-                size: file.size,
-                base64Length: base64Data.length
-            });
+        reader.onload = (e) => {
+            imagePreview.src = e.target.result;
+            imagePreviewContainer.style.display = 'flex';
+            uploadButton.style.display = 'none'; // Hide upload icon
+            setInputState(true); // Enable send button
         };
         reader.readAsDataURL(file);
     }
-});
-
-// Remove attachment button
-document.getElementById('remove-attachment-button')?.addEventListener('click', (e) => {
-    e.preventDefault();
-    clearAttachedImage();
-});
-
-// Handle Enter key in text input with enhanced features
-document.querySelector('.ask-anything-text')?.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        const sendButton = document.querySelector('.send-button');
-        if (sendButton) {
-            sendButton.click();
-        }
-    }
-});
-
-// Auto-resize text input based on content
-document.querySelector('.ask-anything-text')?.addEventListener('input', (e) => {
-    const element = e.target;
-    const hasContent = element.textContent.trim().length > 0;
-    const sendButton = document.querySelector('.send-button');
-    
-    // Enable/disable send button based on content
-    if (sendButton) {
-        sendButton.disabled = !hasContent;
-        sendButton.style.opacity = hasContent ? '1' : '0.5';
-    }
-    
-    // Auto-expand input area for longer content
-    if (element.scrollHeight > element.clientHeight) {
-        element.style.height = 'auto';
-        element.style.height = Math.min(element.scrollHeight, 120) + 'px';
-    }
-});
-
-// Add keyboard shortcuts
-document.addEventListener('keydown', (e) => {
-    // Ctrl/Cmd + Enter to send message
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        e.preventDefault();
-        const sendButton = document.querySelector('.send-button');
-        if (sendButton && !sendButton.disabled) {
-            sendButton.click();
-        }
-    }
-    
-    // Escape to clear input
-    if (e.key === 'Escape') {
-        const textInput = document.querySelector('.ask-anything-text');
-        if (textInput && textInput.textContent.trim()) {
-            textInput.textContent = '';
-            textInput.focus();
-        }
-    }
-});
-
-// Improve mobile scrolling performance
-if ('ontouchstart' in window) {
-    document.body.style.webkitOverflowScrolling = 'touch';
 }
 
-// Function to add copy buttons to code blocks
-function addCopyButtonsToCodeBlocks(container) {
-    const codeBlocks = container.querySelectorAll('pre code');
-    codeBlocks.forEach(block => {
-        const pre = block.parentElement;
-        if (pre && !pre.querySelector('.copy-button')) {
-            const copyButton = document.createElement('button');
-            copyButton.className = 'copy-button';
-            copyButton.innerHTML = '<i class="fas fa-copy"></i>';
-            copyButton.title = 'Copy code';
-            copyButton.style.cssText = `
-                position: absolute;
-                top: 8px;
-                right: 8px;
-                background: rgba(255, 255, 255, 0.9);
-                border: 1px solid #ddd;
-                border-radius: 4px;
-                padding: 4px 8px;
-                cursor: pointer;
-                font-size: 12px;
-                color: #666;
-                transition: all 0.2s ease;
-            `;
-            
-            copyButton.addEventListener('click', () => {
-                navigator.clipboard.writeText(block.textContent).then(() => {
-                    copyButton.innerHTML = '<i class="fas fa-check"></i>';
-                    copyButton.style.color = '#4CAF50';
-                    setTimeout(() => {
-                        copyButton.innerHTML = '<i class="fas fa-copy"></i>';
-                        copyButton.style.color = '#666';
-                    }, 2000);
-                });
-            });
-            
-            pre.style.position = 'relative';
-            pre.appendChild(copyButton);
-        }
+function clearImageSelection() {
+    imageUploadInput.value = ''; // Clear the file input
+    imagePreview.src = '#';
+    imagePreviewContainer.style.display = 'none';
+    uploadButton.style.display = 'inline-flex'; // Show upload icon
+    setInputState(userInput.value.trim() !== ''); // Update button based on text input
+}
+
+function readFileAsDataURL(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = (error) => reject(error);
+        reader.readAsDataURL(file);
     });
 }
 
-console.log("Aegis Protocol DeFi Gateway loaded successfully!");
+
+// --- History Panel ---
+function showHistoryPanel() {
+    // loadChatHistory(); // Called during initializeApp and after relevant DB changes
+    historyPanel.style.display = 'flex';
+}
+
+function hideHistoryPanel() {
+    historyPanel.style.display = 'none';
+}
+
+async function loadChatHistory() {
+    const chats = await getAllChats();
+    historyList.innerHTML = ''; // Clear existing list
+    if (chats && chats.length > 0) {
+        chats.forEach(chat => addChatToHistoryList(chat));
+    } else {
+        historyList.innerHTML = '<li class="history-empty">No chats saved yet.</li>';
+    }
+}
+
+function addChatToHistoryList(chat) {
+    const listItem = document.createElement('li');
+    
+    const titleDiv = document.createElement('div');
+    titleDiv.classList.add('history-item-title');
+    titleDiv.textContent = chat.messages[0]?.content?.substring(0, 30) || "Chat " + chat.id;
+    if (chat.messages[0]?.image) {
+        const imgIndicator = document.createElement('span');
+        imgIndicator.textContent = " (image)";
+        imgIndicator.classList.add('history-image-indicator');
+        titleDiv.appendChild(imgIndicator);
+    }
+    listItem.appendChild(titleDiv);
+
+    const dateSpan = document.createElement('span');
+    dateSpan.classList.add('history-item-date');
+    dateSpan.textContent = new Date(chat.timestamp).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
+    listItem.appendChild(dateSpan);
+    
+    listItem.dataset.chatId = chat.id;
+    listItem.addEventListener('click', () => loadChat(chat.id));
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.innerHTML = '&times;'; // Or an icon
+    deleteBtn.classList.add('delete-history-item-btn');
+    deleteBtn.addEventListener('click', async (e) => {
+        e.stopPropagation(); // Prevent listItem click event
+        // Use titleDiv.textContent for the confirm message, as listItem.textContent might be complex
+        if (confirm(`Are you sure you want to delete "${titleDiv.textContent.replace(" (image)","").trim()}"?`)) {
+            await deleteChatFromDB(chat.id);
+            listItem.remove();
+            if (historyList.children.length === 0) {
+                historyList.innerHTML = '<li class="history-empty">No chats saved yet.</li>';
+            }
+            if (currentChatId === chat.id) {
+                startNewChat(); // If current chat is deleted, start a new one
+            }
+        }
+    });
+    listItem.appendChild(deleteBtn);
+    historyList.prepend(listItem); // Add new chats to the top
+}
+
+
+async function loadChat(chatId) {
+    const chat = await getChat(chatId);
+    if (chat) {
+        currentChatId = chatId;
+        chatWindow.innerHTML = ''; // Clear current chat
+         if (initialGreeting) initialGreeting.style.display = 'none';
+
+        chat.messages.forEach(msg => {
+            // This assumes image URLs are stored directly if they were from assistant,
+            // or need to be reconstructed/fetched if they were user uploads.
+            // For simplicity, let's assume they are stored as data URLs or accessible paths.
+            displayMessage(msg.content, msg.role, msg.image);
+        });
+        hideHistoryPanel();
+        userInput.focus();
+    }
+}
+
+function startNewChat() {
+    currentChatId = null;
+    chatWindow.innerHTML = '';
+    clearInput();
+    if (initialGreeting) initialGreeting.style.display = 'block'; // Show greeting
+    userInput.focus();
+    // Optionally, you might want to clear the history selection or highlight a "New Chat" item
+    // loadChatHistory(); // Refresh to ensure no selection highlight if any
+}
+
+// --- Utility or Placeholder for Welcome ---
+// function displayWelcomeMessage() {
+// if (initialGreeting) initialGreeting.style.display = 'block';
+// }
+
+// Example of how to use:
+// displayMessage("Hello! How can I help you today?", 'assistant');
+// displayMessage("Here's an image:", 'assistant', 'https_placeholder.com/path/to/image.jpg', 'Example Image');
+
+console.log("ChoraAI Script Loaded");
