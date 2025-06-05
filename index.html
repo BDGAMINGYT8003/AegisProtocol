@@ -9,27 +9,31 @@
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         :root {
-            --google-blue: #4285F4;
-            --google-red: #EA4335;
-            --google-yellow: #FBBC05;
-            --google-green: #34A853;
+            /* Epic Games inspired dark theme */
+            --primary-dark: #0f1419;
+            --secondary-dark: #1a1d23;
+            --tertiary-dark: #2a2d35;
+            --accent-blue: #0078f2;
+            --accent-cyan: #00d4aa;
+            --accent-purple: #9147ff;
 
-            --text-primary: #202124;
-            --text-secondary: #5F6368;
-            --text-placeholder: #3c4043; /* For "Ask anything" */
-            --text-link: #5F6368;
+            --text-primary: #ffffff;
+            --text-secondary: #b3b8c4;
+            --text-placeholder: #6b7280;
+            --text-link: #00d4aa;
 
-            --surface-background: #fff;
-            --search-bar-shadow: 0 1px 6px rgba(32, 33, 36, 0.20); /* Softer shadow */
+            --surface-background: var(--secondary-dark);
+            --body-background: var(--primary-dark);
+            --search-bar-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 
-            --button-bg: #F8F9FA;
-            --button-bg-hover: #F1F3F4;
-            --button-text: #3c4043;
-            --button-border: #DADCE0;
+            --button-bg: var(--tertiary-dark);
+            --button-bg-hover: #363942;
+            --button-text: var(--text-secondary);
+            --button-border: #404654;
 
-            --send-button-bg: #00d4aa; /* Aegis Protocol primary crypto green */
-            --send-button-icon: #fff;
-            --send-button-bg-hover: #00b894; /* Darker green for hover */
+            --send-button-bg: var(--accent-cyan);
+            --send-button-icon: #ffffff;
+            --send-button-bg-hover: #00b894;
 
             --font-family-logo: 'Poppins', 'Open Sans', sans-serif;
             --font-family-ui: 'Open Sans', sans-serif;
@@ -45,7 +49,7 @@
             height: 100%;
             width: 100%;
             font-family: var(--font-family-ui);
-            background-color: var(--surface-background);
+            background-color: var(--body-background);
             overflow-x: hidden; /* Only disable horizontal scrolling */
             overflow-y: auto; /* Allow vertical scrolling */
             -webkit-tap-highlight-color: transparent; /* Remove tap highlight on mobile */
@@ -75,8 +79,8 @@
         }
         
         .logo-image {
-            max-width: 280px;
-            max-height: 80px;
+            max-width: 560px;
+            max-height: 160px;
             width: auto;
             height: auto;
             object-fit: contain;
