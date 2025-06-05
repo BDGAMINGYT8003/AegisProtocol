@@ -88,18 +88,19 @@
 
         .search-container {
             background-color: var(--surface-background);
-            border-radius: 28px; /* Material 3 style rounded corners */
+            border-radius: 12px; /* Slightly more rounded for modern look */
             box-shadow: var(--search-bar-shadow);
             padding: 16px 20px; /* More vertical padding */
             width: 100%;
             display: flex;
             flex-direction: column;
             gap: 14px; /* Space between "Ask anything" and action buttons row */
-            border: 1px solid #dfe1e5; /* Subtle border similar to Google's actual search bar */
+            border: 1px solid var(--button-border); /* Dark theme border */
         }
 
         .search-container:hover, .search-container:focus-within {
-             box-shadow: 0 2px 8px rgba(32,33,36,.28), 0 1px 2px rgba(32,33,36,.08); /* Enhanced shadow on hover/focus */
+             box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+             border-color: var(--accent-cyan);
         }
 
 
