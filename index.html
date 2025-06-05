@@ -701,6 +701,27 @@
     <!-- Hidden file input for image upload -->
     <input type="file" id="image-upload-input" accept="image/*" style="display: none;">
 
+    <div id="chat-container" style="display: none;">
+        <div id="chat-history-sidebar">
+            <button id="new-chat-button" class="action-button">
+                <i class="fas fa-plus"></i> New Chat
+            </button>
+            <ul id="chat-history-list">
+                <!-- Chat history items will be populated here by JS -->
+            </ul>
+        </div>
+        <div id="chat-area">
+            <div id="message-list">
+                <!-- Chat messages will be appended here -->
+            </div>
+            <div id="chat-status-message" style="display: none; padding: 10px; text-align: center;"></div>
+            <div id="chat-input-container">
+                <input type="text" id="chat-message-input" placeholder="Type your message...">
+                <button id="chat-send-button">Send</button>
+            </div>
+        </div>
+    </div>
+
     <script src="script.js"></script>
 </body>
 </html>
