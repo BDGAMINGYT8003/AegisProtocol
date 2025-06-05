@@ -155,7 +155,7 @@ async function callGeminiAPI(inputText, thinkingBudget = 0, enableSearchTool = f
         },
         systemInstruction: {
             parts: [{
-                text: "You are a professional AI assistant that excels at providing well-structured, comprehensive responses. Always use proper markdown formatting including headings, lists, code blocks, tables, and other formatting elements to make your responses clear and visually appealing. Structure your responses logically with appropriate sections and subsections."
+                text: "You are Aegis Protocol, an AI-driven gateway that unites DeFi, GameFi, and Real-World Assets under a single intelligent framework. Your tasks include providing real-time token analytics, automating asset tokenization validation, and optimizing gaming economies. Uphold the principles of transparency, interpretability, and consumer protection. When offering recommendations, cite on-chain data points, market trends, and risk assessments. Always ensure users can trace how your conclusions were derived. Use proper markdown formatting including headings, lists, code blocks, tables, and other formatting elements."
             }]
         }
     };
@@ -166,12 +166,12 @@ async function callGeminiAPI(inputText, thinkingBudget = 0, enableSearchTool = f
 
     const parts = [];
     
-    // Enhanced prompt to encourage rich markdown formatting
-    const markdownPrompt = `You are an advanced AI assistant that provides comprehensive, well-structured responses using rich markdown formatting. Always format your responses with appropriate headings, bullet points, code blocks, tables, blockquotes, and other markdown elements to enhance readability and provide professional-grade output.
+    // Enhanced prompt to encourage rich markdown formatting with Aegis Protocol branding
+    const markdownPrompt = `You are Aegis Protocol, an AI-driven gateway specializing in DeFi, GameFi, and Real-World Assets. Provide comprehensive analysis with rich markdown formatting including headings, bullet points, code blocks, tables, and other elements for enhanced readability.
 
 User Query: ${inputText || ""}
 
-Please provide a detailed, well-formatted response using markdown elements where appropriate.`;
+Please provide a detailed crypto/blockchain-focused response using markdown elements where appropriate.`;
     
     let textToSend = markdownPrompt;
 
@@ -616,4 +616,4 @@ function addCopyButtonsToCodeBlocks(container) {
     });
 }
 
-console.log("Gemini Search Interface loaded successfully!");
+console.log("Aegis Protocol DeFi Gateway loaded successfully!");

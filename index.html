@@ -27,9 +27,9 @@
             --button-text: #3c4043;
             --button-border: #DADCE0;
 
-            --send-button-bg: var(--google-blue);
+            --send-button-bg: #00d4aa; /* Aegis Protocol primary crypto green */
             --send-button-icon: #fff;
-            --send-button-bg-hover: #1867D3; /* Darker blue for hover */
+            --send-button-bg-hover: #00b894; /* Darker green for hover */
 
             --font-family-logo: 'Poppins', 'Open Sans', sans-serif;
             --font-family-ui: 'Open Sans', sans-serif;
@@ -127,7 +127,7 @@
         }
 
         .ask-anything-text:empty::before {
-            content: "Ask anything";
+            content: attr(data-placeholder);
             color: var(--text-placeholder); /* Placeholder text color */
             pointer-events: none;
             display: inline-block;
@@ -643,7 +643,7 @@
 
         <div class="search-container">
             <div class="search-input-area">
-                <div class="ask-anything-text" contenteditable="true"></div>
+                <div class="ask-anything-text" contenteditable="true" data-placeholder="Ask about DeFi protocols, token analytics, or GameFi strategies..."></div>
             </div>
             <div id="attachment-preview-area" style="display: none; margin-top: 10px; padding: 8px; background-color: var(--button-bg); border-radius: 12px; text-align: center;">
                 <img id="attachment-thumbnail" src="#" alt="Image preview" style="max-width: 120px; max-height: 120px; border-radius: 8px; object-fit: cover; border: 1px solid var(--button-border);"/>
@@ -689,7 +689,7 @@
             <div class="response-content"></div> <!-- Actual API response will go here -->
         </div>
 
-        <a href="#" class="legacy-search-link">Go back to legacy search</a>
+        <a href="#" class="legacy-search-link">Traditional Analytics Portal</a>
     </div>
 
     <!-- Hidden file input for image upload -->
