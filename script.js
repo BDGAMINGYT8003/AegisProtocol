@@ -21,6 +21,8 @@ const availableModels = [
     }
 ];
 const GEMINI_API_KEY = "AIzaSyCL0lyAzof7p-R8d8QhExCwNWiZE0WiaXQ";
+const googleApiKey = "YOUR_GOOGLE_API_KEY"; // Placeholder for Google Custom Search API Key
+const googleCx = "YOUR_GOOGLE_CX_ID"; // Placeholder for Google Custom Search Engine ID
 
 // Initialize Marked.js options
 if (typeof marked !== 'undefined') {
@@ -617,3 +619,308 @@ function addCopyButtonsToCodeBlocks(container) {
 }
 
 console.log("Aegis Protocol DeFi Gateway loaded successfully!");
+
+async function fetchGoogleSearchResults(query) {
+    if (!googleApiKey || googleApiKey === "YOUR_GOOGLE_API_KEY" || !googleCx || googleCx === "YOUR_GOOGLE_CX_ID") {
+        console.error("Google API Key or CX ID is not configured. Please set them in script.js.");
+        // In a real app, you might throw an error or return a specific status
+        // For this PoC, we'll simulate an empty search result or specific error object
+        return Promise.reject("API Key/CX not configured");
+    }
+
+    const apiUrl = `https://www.googleapis.com/customsearch/v1?key=${googleApiKey}&cx=${googleCx}&q=${encodeURIComponent(query)}`;
+
+    try {
+        const response = await fetch(apiUrl);
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ message: 'Failed to parse error JSON.' }));
+            console.error(`Google Search API Error: ${response.status} ${response.statusText}`, errorData);
+            throw new Error(`HTTP error ${response.status}: ${errorData.error?.message || response.statusText}`);
+        }
+        const data = await response.json();
+        if (data.items && data.items.length > 0) {
+            return data.items; // Array of search result items
+        } else {
+            console.log("No results found for query:", query);
+            return []; // Return empty array for no results
+        }
+    } catch (error) {
+        console.error("Failed to fetch Google Search results:", error);
+        // Depending on how you want to handle errors upstream, you might re-throw or return a specific error indicator
+        throw error;
+    }
+}
+
+function extractCryptoDataFromSearchResults(searchResults, symbol) {
+    const data = {
+        coinName: "N/A", // Will try to infer or default
+        symbol: symbol.toUpperCase(),
+        currentPrice: "N/A",
+        marketCap: "N/A",
+        volume24h: "N/A",
+        priceChange24h: "N/A",
+        allTimeHigh: "N/A",
+        athDate: "N/A",
+        percentFromAth: "N/A",
+        totalSupply: "N/A",
+        maxSupply: "N/A",
+        change1h: "N/A",
+        change24h: "N/A", // Note: This is different from priceChange24h in the template, might be redundant or a typo in issue
+        change7d: "N/A",
+        change30d: "N/A",
+        change1y: "N/A",
+        futureUnlocks: "N/A"
+    };
+
+    // Attempt to infer coinName (very basic)
+    const commonNames = { BTC: "Bitcoin", ETH: "Ethereum", ADA: "Cardano", SOL: "Solana", DOGE: "Dogecoin" };
+    data.coinName = commonNames[data.symbol] || data.symbol; // Default to symbol if not in common map
+
+    if (!searchResults || searchResults.length === 0) {
+        return data;
+    }
+
+    for (const item of searchResults) {
+        const snippet = (item.snippet || "").toLowerCase();
+        const title = (item.title || "").toLowerCase();
+        const textToSearch = title + " " + snippet;
+
+        // Try to find current price (very naive regex)
+        // Looks for patterns like $123,456.78 or $123.45 or €... or £...
+        const priceRegex = /([\$€£])(\d{1,3}(?:,\d{3})*(\.\d+)?|\d+(\.\d+)?)/;
+        let priceMatch = textToSearch.match(priceRegex);
+
+        if (priceMatch && data.currentPrice === "N/A") { // Take first plausible price found
+            // Check if the text also mentions the symbol or a common name for it, to reduce false positives
+            if (textToSearch.includes(data.symbol.toLowerCase()) || textToSearch.includes(data.coinName.toLowerCase())) {
+                 data.currentPrice = priceMatch[1] + priceMatch[2];
+            }
+        }
+
+        // Example for Market Cap (even more naive and unlikely to be reliable)
+        const marketCapRegex = /market cap(?:italisation|italization)?(?: of|:)?.*?([\$€£])(\d{1,3}(?:,\d{3})*(?:,\d{3})*(\.\d+)?|\d+(\.\d+)?)/;
+        let mcMatch = textToSearch.match(marketCapRegex);
+        if (mcMatch && data.marketCap === "N/A") {
+             if (textToSearch.includes(data.symbol.toLowerCase()) || textToSearch.includes(data.coinName.toLowerCase())) {
+                data.marketCap = mcMatch[1] + mcMatch[2];
+            }
+        }
+        // Add more extraction logic here if other fields are deemed feasible from snippets
+        // For now, most will remain N/A
+    }
+    return data;
+}
+
+function formatCryptoDataToMarkdown(data) {
+    // Ensure symbol is available for template, default to 'N/A' if data or data.symbol is missing
+    const sym = data?.symbol || 'N/A';
+    const coinName = data?.coinName || sym; // Default coinName to symbol if not available
+
+    return `
+---
+**${coinName} (${sym})**
+
+- Current Price: ${data?.currentPrice || 'N/A'}
+- Market Cap: ${data?.marketCap || 'N/A'}
+- 24h Trading Volume: ${data?.volume24h || 'N/A'}
+- Price Change (24h): ${data?.priceChange24h || 'N/A'}
+- All-Time High: ${data?.allTimeHigh || 'N/A'} ${data?.athDate ? '(on ' + data.athDate + ')' : ''}
+- Percent from ATH: ${data?.percentFromAth || 'N/A'}
+- Total Supply: ${data?.totalSupply || 'N/A'} ${sym}
+- Max Supply: ${data?.maxSupply || 'N/A'} ${sym}
+
+**Key Price Movements:**
+- 1 Hour Change: ${data?.change1h || 'N/A'}
+- 24 Hour Change: ${data?.change24h || 'N/A'}
+- 7 Day Change: ${data?.change7d || 'N/A'}
+- 30 Day Change: ${data?.change30d || 'N/A'}
+- 1 Year Change: ${data?.change1y || 'N/A'}
+
+- Future Unlocks: ${data?.futureUnlocks || 'N/A'}
+
+If you need additional details or have further questions, feel free to ask!
+---
+`;
+}
+
+async function processAndFormatCryptoData(promptQuery, symbol) {
+    try {
+        // Refine query for better search results if needed, e.g., focusing on price or overview
+        const searchResults = await fetchGoogleSearchResults(`${symbol} cryptocurrency ${promptQuery}`);
+        if (!searchResults) {
+            throw new Error('No search results from Google.');
+        }
+        const extractedData = extractCryptoDataFromSearchResults(searchResults, symbol);
+        return formatCryptoDataToMarkdown(extractedData);
+    } catch (error) {
+        console.error(`Error in processAndFormatCryptoData for ${symbol}:`, error);
+        throw new Error(`Failed to process data for ${symbol}: ${error.message}`);
+    }
+}
+
+function isCryptocurrencyQuery(promptText) {
+    const lowerPrompt = promptText.toLowerCase();
+    let detectedSymbol = null;
+
+    // Regex for symbols like $BTC or BTC (case insensitive, 3-5 alpha characters)
+    // It captures the symbol part after '$' or the standalone symbol.
+    const symbolRegex = /\$([a-zA-Z]{3,5})\b|\b([a-zA-Z]{3,5})\b/g;
+    let match;
+    const potentialSymbols = [];
+    // Find all potential symbol matches
+    while ((match = symbolRegex.exec(lowerPrompt)) !== null) {
+        // match[1] is for $SYMBOL, match[2] is for SYMBOL
+        potentialSymbols.push(match[1] || match[2]);
+    }
+
+    const cryptoKeywords = [
+        "bitcoin", "ethereum", "litecoin", "cardano", "solana", "dogecoin", "shiba inu",
+        "xrp", "polkadot", "chainlink", "matic", "polygon", "tron", "avalanche", "binance coin", "bnb",
+        "token", "coin", "crypto", "cryptocurrency", "altcoin", "defi", "gamefi", "nft",
+        "blockchain", "web3", "metaverse", "exchange", "wallet", "mining", "staking"
+    ];
+    // Query patterns are not explicitly used in this simplified example's logic
+    // but are good to keep for future enhancements.
+    /* const queryPatterns = [
+        "price of", "current price", "what is the price of", "how much is",
+        "info on", "information on", "details about", "tell me about", "explain",
+        "market cap of", "marketcap", "mcap", "trading volume", "24h volume",
+        "all-time high", "ath", "all time low", "atl",
+        "chart for", "prediction for", "forecast for", "future of",
+        "compare", "vs", "versus", "analysis of", "review of",
+        "how to buy", "where to buy", "best way to invest in"
+    ]; */
+
+    let isCryptoMatch = false;
+
+    // Attempt to identify a primary symbol from the prompt
+    if (potentialSymbols.length > 0) {
+        // Prioritize symbols found. For simplicity, take the last one found as it might be more specific.
+        // More sophisticated logic could involve checking against a known list of valid tickers.
+        // Ensure detectedSymbol is not a common word mistaken for a symbol by checking against a small list of common English words if needed.
+        const commonWords = ["the", "and", "for", "not", "you", "this", "that", "is", "are", "was", "what", "how", "tell", "me", "about", "price", "help", "info", "from"];
+        let assignedSymbol = false;
+        for (let i = potentialSymbols.length - 1; i >= 0; i--) {
+            const symCandidate = potentialSymbols[i];
+            if (!commonWords.includes(symCandidate.toLowerCase())) {
+                 detectedSymbol = symCandidate.toUpperCase();
+                 assignedSymbol = true;
+                 break;
+            }
+        }
+        if(assignedSymbol) isCryptoMatch = true; // If a symbol-like pattern is found and not a common word, assume it's crypto-related.
+    }
+
+    // Check for keywords, which can also indicate a crypto query
+    if (!isCryptoMatch) {
+        for (const keyword of cryptoKeywords) {
+            if (lowerPrompt.includes(keyword)) {
+                isCryptoMatch = true;
+                // If keywords matched and we previously found potential symbols (but they were common words),
+                // it's more likely they ARE symbols in this context. Re-assign first potential symbol.
+                if (!detectedSymbol && potentialSymbols.length > 0) {
+                    detectedSymbol = potentialSymbols[0].toUpperCase();
+                }
+                break;
+            }
+        }
+    }
+
+    // Final check: if a symbol was detected, isCrypto must be true.
+    if (detectedSymbol) {
+        isCryptoMatch = true;
+    }
+
+    let isComplexQuery = false;
+    const complexKeywords = [
+        "compare", "vs", "versus", "analyze", "analysis", "trend", "predict", "prediction",
+        "forecast", "should i", "invest in", "future of", "compare to", "difference between"
+    ];
+    for (const keyword of complexKeywords) {
+        if (lowerPrompt.includes(keyword)) {
+            isComplexQuery = true;
+            break;
+        }
+    }
+
+    const uniqueSymbols = new Set(potentialSymbols.map(s => s.toUpperCase()));
+    if (uniqueSymbols.size > 1) {
+        isComplexQuery = true;
+    }
+
+    return {
+        isCrypto: isCryptoMatch,
+        symbol: detectedSymbol, // This can be null
+        isComplex: isComplexQuery
+    };
+}
+
+// Modify sendMessage function
+async function sendMessage() {
+    const messageText = userInput.value.trim();
+    const imageSrcForDisplay = currentImageData ? `data:${currentImageData.mimeType};base64,${currentImageData.base64Data}` : null;
+
+    if ((!messageText && !currentImageData) || isWaitingForResponse) {
+        if (!messageText) autoGrowTextarea();
+        return;
+    }
+
+    vibrate(50);
+    sendSound.play().catch(e => console.warn("Send sound playback failed:", e));
+    setInputState(false); // Disable input early
+
+    const userParts = [];
+    if (messageText) {
+        userParts.push({ text: messageText });
+    }
+    if (currentImageData) {
+        userParts.push({
+            inline_data: {
+                mime_type: currentImageData.mimeType,
+                data: currentImageData.base64Data
+            }
+        });
+    }
+    const userMessageForHistory = { role: "user", parts: userParts };
+
+    // Display user message & add to history (common for both paths now)
+    displayMessage(messageText || "(Image sent)", 'user', { imageSrc: imageSrcForDisplay });
+    chatHistory.push(userMessageForHistory);
+
+    const currentImageBackup = { ...currentImageData }; // Backup image data
+    userInput.value = '';
+    userInput.dispatchEvent(new Event('input'));
+    clearImageSelection(); // Clears currentImageData
+    // userInput.blur(); // Blurring can be optional
+
+    const cryptoQueryCheck = isCryptocurrencyQuery(messageText);
+
+    if (cryptoQueryCheck.isCrypto && cryptoQueryCheck.symbol && !cryptoQueryCheck.isComplex) {
+        const thinkingMessageElement = displayThinkingIndicator();
+        try {
+            const cryptoDataMarkdown = await processAndFormatCryptoData(messageText, cryptoQueryCheck.symbol);
+            if (thinkingMessageElement) thinkingMessageElement.remove();
+            displayMessage(cryptoDataMarkdown, 'ai');
+            chatHistory.push({ role: "model", parts: [{ text: cryptoDataMarkdown }] });
+        } catch (error) {
+            console.error("Error processing crypto query:", error);
+            if (thinkingMessageElement) thinkingMessageElement.remove();
+            const errorMessage = "Sorry, I couldn't fetch the cryptocurrency data for " + cryptoQueryCheck.symbol + ". Please try again later or ask something else.";
+            displayMessage(errorMessage, 'ai', { isError: true });
+            chatHistory.push({ role: "model", parts: [{ text: errorMessage }] });
+        }
+        await saveCurrentChatState();
+        setInputState(true);
+    } else {
+        // This is the original path for Gemini AI
+        const apiContents = chatHistory.map(msg => ({ role: msg.role, parts: msg.parts }));
+        // Ensure systemInstruction is correctly handled if it was modified or needs to be part of chatHistory for API
+        const requestBody = {
+            contents: apiContents,
+            generationConfig: generationConfig,
+            safetySettings: safetySettings,
+            systemInstruction: systemInstruction // Make sure this is the correct system instruction object
+        };
+        await getAIResponseStreaming(requestBody); // This function should handle its own setInputState(true) and saveCurrentChatState
+    }
+}
