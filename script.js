@@ -6,16 +6,19 @@ const availableModels = [
     {
         id: "gemini-2.5-flash-preview-05-20",
         label: "Gemini 2.5 Flash",
+        shortLabel: "Gemini 2.5 F",
         capabilities: { think: true, search: true, attach: true }
     },
     {
         id: "gemini-2.0-flash",
         label: "Gemini 2.0 Flash",
+        shortLabel: "Gemini 2.0 F",
         capabilities: { think: false, search: true, attach: true }
     },
     {
         id: "gemini-2.0-flash-lite",
         label: "Gemini 2.0 Flash-Lite",
+        shortLabel: "Gemini 2.0 F-L",
         capabilities: { think: false, search: false, attach: true }
     }
 ];
@@ -297,6 +300,14 @@ Please provide a detailed, well-formatted response using markdown elements where
                 
                 // Add copy buttons to code blocks
                 addCopyButtonsToCodeBlocks(responseContentDiv);
+                
+                // Smooth scroll to the response area
+                setTimeout(() => {
+                    responseArea.scrollIntoView({ 
+                        behavior: 'smooth', 
+                        block: 'start' 
+                    });
+                }, 100);
             } else {
                 console.error("Marked.js library not loaded. Displaying as plain text.");
                 responseContentDiv.innerText = finalText;
@@ -417,7 +428,8 @@ document.addEventListener('DOMContentLoaded', () => {
             item.addEventListener('click', () => {
                 // Update selected model
                 currentModelId = model.id;
-                if (selectedModelLabel) selectedModelLabel.textContent = model.label;
+                // Use short label for display, especially for Flash-Lite
+                if (selectedModelLabel) selectedModelLabel.textContent = model.shortLabel || model.label;
 
                 // Update UI to reflect selection
                 document.querySelectorAll('.model-dropdown-item').forEach(i => i.classList.remove('selected-model-item'));
@@ -507,7 +519,7 @@ document.getElementById('remove-attachment-button')?.addEventListener('click', (
     clearAttachedImage();
 });
 
-// Handle Enter key in text input
+// Handle Enter key in text input with enhanced features
 document.querySelector('.ask-anything-text')?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
@@ -517,6 +529,51 @@ document.querySelector('.ask-anything-text')?.addEventListener('keydown', (e) =>
         }
     }
 });
+
+// Auto-resize text input based on content
+document.querySelector('.ask-anything-text')?.addEventListener('input', (e) => {
+    const element = e.target;
+    const hasContent = element.textContent.trim().length > 0;
+    const sendButton = document.querySelector('.send-button');
+    
+    // Enable/disable send button based on content
+    if (sendButton) {
+        sendButton.disabled = !hasContent;
+        sendButton.style.opacity = hasContent ? '1' : '0.5';
+    }
+    
+    // Auto-expand input area for longer content
+    if (element.scrollHeight > element.clientHeight) {
+        element.style.height = 'auto';
+        element.style.height = Math.min(element.scrollHeight, 120) + 'px';
+    }
+});
+
+// Add keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+    // Ctrl/Cmd + Enter to send message
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        const sendButton = document.querySelector('.send-button');
+        if (sendButton && !sendButton.disabled) {
+            sendButton.click();
+        }
+    }
+    
+    // Escape to clear input
+    if (e.key === 'Escape') {
+        const textInput = document.querySelector('.ask-anything-text');
+        if (textInput && textInput.textContent.trim()) {
+            textInput.textContent = '';
+            textInput.focus();
+        }
+    }
+});
+
+// Improve mobile scrolling performance
+if ('ontouchstart' in window) {
+    document.body.style.webkitOverflowScrolling = 'touch';
+}
 
 // Function to add copy buttons to code blocks
 function addCopyButtonsToCodeBlocks(container) {
