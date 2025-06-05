@@ -34,7 +34,10 @@ function initDB() {
         };
 
         request.onerror = (event) => {
-            console.error('IndexedDB: Error opening database', event.target.error);
+            const errorMsg = 'IndexedDB: Error opening database: ' + event.target.error.message;
+            console.error(errorMsg, event.target.error);
+            if(typeof displayStatusMessage === 'function') displayStatusMessage(errorMsg, true, 10000); // Longer duration for critical init error
+            else alert(errorMsg); // Fallback if displayStatusMessage isn't ready
             reject(event.target.error);
         };
     });
@@ -95,18 +98,24 @@ function saveMessageToSession(sessionId, sender, text) {
                 resolve();
             };
             putRequest.onerror = (event) => {
-                console.error(`IndexedDB: Error saving message to session '${sessionId}'`, event.target.error);
+                const errorMsg = `IndexedDB: Error saving message to session '${sessionId}': ` + event.target.error.message;
+                console.error(errorMsg, event.target.error);
+                if(typeof displayStatusMessage === 'function') displayStatusMessage(errorMsg, true);
                 reject(event.target.error);
             };
         };
 
         getRequest.onerror = (event) => {
-            console.error(`IndexedDB: Error retrieving session '${sessionId}' for saving`, event.target.error);
+            const errorMsg = `IndexedDB: Error retrieving session '${sessionId}' for saving: ` + event.target.error.message;
+            console.error(errorMsg, event.target.error);
+            if(typeof displayStatusMessage === 'function') displayStatusMessage(errorMsg, true);
             reject(event.target.error);
         };
 
         transaction.onerror = (event) => {
-            console.error('IndexedDB: Transaction error in saveMessageToSession', event.target.error);
+            const errorMsg = 'IndexedDB: Transaction error in saveMessageToSession: ' + event.target.error.message;
+            console.error(errorMsg, event.target.error);
+            if(typeof displayStatusMessage === 'function') displayStatusMessage(errorMsg, true);
             reject(event.target.error);
         };
     });
@@ -135,12 +144,16 @@ function getSessionMessages(sessionId) {
         };
 
         request.onerror = (event) => {
-            console.error(`IndexedDB: Error retrieving messages for session '${sessionId}'`, event.target.error);
+            const errorMsg = `IndexedDB: Error retrieving messages for session '${sessionId}': ` + event.target.error.message;
+            console.error(errorMsg, event.target.error);
+            if(typeof displayStatusMessage === 'function') displayStatusMessage(errorMsg, true);
             reject(event.target.error);
         };
 
         transaction.onerror = (event) => {
-            console.error('IndexedDB: Transaction error in getSessionMessages', event.target.error);
+            const errorMsg = 'IndexedDB: Transaction error in getSessionMessages: ' + event.target.error.message;
+            console.error(errorMsg, event.target.error);
+            if(typeof displayStatusMessage === 'function') displayStatusMessage(errorMsg, true);
             reject(event.target.error);
         };
     });
@@ -170,7 +183,9 @@ async function createNewChatSessionInDB() {
             resolve(newSession);
         };
         request.onerror = (event) => {
-            console.error(`IndexedDB: Error persisting new chat session '${newSession.sessionId}'`, event.target.error);
+            const errorMsg = `IndexedDB: Error persisting new chat session '${newSession.sessionId}': ` + event.target.error.message;
+            console.error(errorMsg, event.target.error);
+            if(typeof displayStatusMessage === 'function') displayStatusMessage(errorMsg, true);
             reject(event.target.error);
         };
     });
@@ -181,6 +196,7 @@ function getAllSessionsFromDB() {
     return new Promise((resolve, reject) => {
         if (!db) {
             console.error('IndexedDB: Database not initialized.');
+            // No displayStatusMessage here as it's a common check before DB operations.
             return reject('Database not initialized.');
         }
         const transaction = db.transaction([STORE_NAME], 'readonly');
@@ -192,7 +208,9 @@ function getAllSessionsFromDB() {
             resolve(event.target.result);
         };
         request.onerror = (event) => {
-            console.error('IndexedDB: Error retrieving all sessions', event.target.error);
+            const errorMsg = 'IndexedDB: Error retrieving all sessions: ' + event.target.error.message;
+            console.error(errorMsg, event.target.error);
+            if(typeof displayStatusMessage === 'function') displayStatusMessage(errorMsg, true);
             reject(event.target.error);
         };
     });
@@ -272,7 +290,9 @@ function getSessionFromDB(sessionId) {
         const request = store.get(sessionId);
         request.onsuccess = () => resolve(request.result);
         request.onerror = (event) => {
-            console.error("getSessionFromDB error:", event.target.error);
+            const errorMsg = "getSessionFromDB error: " + event.target.error.message;
+            console.error(errorMsg, event.target.error);
+            if(typeof displayStatusMessage === 'function') displayStatusMessage(errorMsg, true);
             reject(request.error);
         };
     });
@@ -282,6 +302,7 @@ function saveSessionToDB(sessionObject) {
     return new Promise((resolve, reject) => {
         if (!db) {
             console.error("saveSessionToDB: DB not initialized");
+            // No displayStatusMessage here
             return reject("DB not initialized");
         }
         const transaction = db.transaction([STORE_NAME], 'readwrite');
@@ -289,7 +310,9 @@ function saveSessionToDB(sessionObject) {
         const request = store.put(sessionObject); // put will add or update
         request.onsuccess = () => resolve(request.result);
         request.onerror = (event) => {
-            console.error("saveSessionToDB error:", event.target.error);
+            const errorMsg = "saveSessionToDB error: " + event.target.error.message;
+            console.error(errorMsg, event.target.error);
+            if(typeof displayStatusMessage === 'function') displayStatusMessage(errorMsg, true);
             reject(request.error);
         };
     });
@@ -586,31 +609,94 @@ function displayStatusMessage(message, isError = true, duration = 5000) {
 
 // --- View Switching Functions ---
 function showSearchView() {
-    const mainContent = document.querySelector('.main-content');
+    const searchInterface = document.querySelector('.search-interface');
     const chatContainer = document.getElementById('chat-container');
 
-    if (mainContent) mainContent.style.display = 'flex'; // Assuming it's flex
-    if (chatContainer) chatContainer.style.display = 'none';
+    if (!searchInterface) {
+        console.error("Search interface element (.search-interface) not found.");
+        return;
+    }
+    if (!chatContainer) {
+        console.error("Chat container element (#chat-container) not found.");
+        return;
+    }
+
     document.body.classList.remove('chat-active');
-    console.log("Switched to Search View");
+
+    chatContainer.style.pointerEvents = 'none';
+    chatContainer.style.opacity = '0';
+
+    setTimeout(() => {
+        chatContainer.style.display = 'none';
+
+        searchInterface.style.display = 'flex'; // Or its default display type
+        // Force reflow
+        void searchInterface.offsetWidth;
+
+        searchInterface.style.opacity = '1';
+        searchInterface.style.pointerEvents = 'auto';
+        console.log("Switched to Search View");
+    }, 300); // Match CSS transition duration (0.3s)
 }
 
 function showChatView() {
-    const mainContent = document.querySelector('.main-content');
+    const searchInterface = document.querySelector('.search-interface');
     const chatContainer = document.getElementById('chat-container');
     const messageList = document.getElementById('message-list');
     const chatMessageInput = document.getElementById('chat-message-input');
 
-    if (mainContent) mainContent.style.display = 'none';
-    if (chatContainer) chatContainer.style.display = 'flex'; // Assuming it's flex
+    if (!searchInterface) {
+        console.error("Search interface element (.search-interface) not found.");
+        return;
+    }
+    if (!chatContainer) {
+        console.error("Chat container element (#chat-container) not found.");
+        return;
+    }
+    if (!messageList) console.warn("Message list element (#message-list) not found in showChatView."); // Warn as it's for clearing
+    if (!chatMessageInput) console.warn("Chat message input (#chat-message-input) not found in showChatView."); // Warn as it's for clearing
+
     document.body.classList.add('chat-active');
 
-    // Clear previous chat content
-    if (messageList) messageList.innerHTML = '';
-    if (chatMessageInput) chatMessageInput.value = '';
+    searchInterface.style.pointerEvents = 'none';
+    searchInterface.style.opacity = '0';
 
-    console.log("Switched to Chat View");
+    setTimeout(() => {
+        searchInterface.style.display = 'none';
+
+        chatContainer.style.display = 'flex'; // Or its default display type
+        // Force reflow
+        void chatContainer.offsetWidth;
+
+        chatContainer.style.opacity = '1';
+        chatContainer.style.pointerEvents = 'auto';
+
+        // Clear previous chat content when switching to chat view
+        if (messageList) messageList.innerHTML = '';
+        if (chatMessageInput) {
+            chatMessageInput.value = '';
+            // chatMessageInput.focus(); // Focusing handled by startNewChat/loadChatSession
+        }
+        console.log("Switched to Chat View");
+    }, 300); // Match CSS transition duration
 }
+
+// Initial setup on DOMContentLoaded for view states
+document.addEventListener('DOMContentLoaded', () => {
+    const searchInterface = document.querySelector('.search-interface');
+    const chatContainer = document.getElementById('chat-container');
+
+    if (searchInterface) {
+        searchInterface.style.opacity = '1'; // Start with search view visible
+        searchInterface.style.pointerEvents = 'auto';
+    }
+    if (chatContainer) {
+        chatContainer.style.opacity = '0';
+        chatContainer.style.display = 'none'; // Start with chat view hidden
+        chatContainer.style.pointerEvents = 'none';
+    }
+    // ... other DOMContentLoaded logic ...
+});
 // --- End View Switching Functions ---
 
 // --- Message Rendering Function ---
@@ -1162,6 +1248,1017 @@ async function callGeminiAPI(inputText, thinkingBudget = 0, enableSearchTool = f
             if (done) break;
 
             accumulatedChunks += decoder.decode(value, { stream: true });
+
+            // Process valid JSON chunks (Google's streaming API often sends multiple JSON objects)
+            // Each valid JSON object needs to be parsed separately.
+            // A common pattern is that chunks are separated by newlines or commas.
+            // This is a simplified parser; a more robust one might be needed for all edge cases.
+            let lastProcessedIndex = 0;
+            for (let i = 0; i < accumulatedChunks.length; i++) {
+                if (accumulatedChunks[i] === '}' || accumulatedChunks[i] === ']') {
+                    // Try to parse from lastProcessedIndex up to this point
+                    let potentialJson = accumulatedChunks.substring(lastProcessedIndex, i + 1);
+                    // Remove leading commas if any (sometimes happens in stream)
+                    potentialJson = potentialJson.replace(/^,/, '');
+                    try {
+                        const jsonData = JSON.parse(potentialJson);
+                        if (jsonData.candidates && jsonData.candidates[0].content && jsonData.candidates[0].content.parts && jsonData.candidates[0].content.parts[0].text) {
+                            const textChunk = jsonData.candidates[0].content.parts[0].text;
+                            fullResponseText += textChunk;
+
+                            if (aiMessageContentElement) {
+                                if (!thinkingIndicatorRemoved) {
+                                    const thinkingIndicator = aiMessageContentElement.querySelector('.thinking-indicator');
+                                    if (thinkingIndicator) thinkingIndicator.remove();
+                                    aiMessageContentElement.innerHTML = ''; // Clear any remaining indicator text
+                                    thinkingIndicatorRemoved = true;
+                                }
+                                // Append and re-parse markdown incrementally
+                                // For live markdown, this can be performance intensive.
+                                // Simpler: aiMessageContentElement.textContent += textChunk;
+                                aiMessageContentElement.innerHTML = marked.parse(fullResponseText);
+                                // Ensure message list scrolls with new content
+                                const messageList = document.getElementById('message-list');
+                                if (messageList) messageList.scrollTop = messageList.scrollHeight;
+
+                            }
+                        }
+                        lastProcessedIndex = i + 1; // Move past the processed JSON
+                    } catch (e) {
+                        // Not a complete JSON object yet, or invalid JSON. Continue accumulating.
+                    }
+                }
+            }
+            // Keep the unprocessed part of the chunk for the next iteration
+            accumulatedChunks = accumulatedChunks.substring(lastProcessedIndex);
+        }
+
+        console.log("API Success (full streamed text):", fullResponseText);
+
+        if (aiMessageContentElement) {
+            // Final markdown parse for the complete content
+            aiMessageContentElement.innerHTML = marked.parse(fullResponseText);
+            addCopyButtonsToCodeBlocks(aiMessageContentElement); // Add copy buttons to code blocks in this message
+            const messageList = document.getElementById('message-list');
+            if (messageList) messageList.scrollTop = messageList.scrollHeight;
+        } else if (responseContentDiv) { // Fallback for original prompt screen
+            responseContentDiv.innerHTML = marked.parse(fullResponseText);
+            addCopyButtonsToCodeBlocks(responseContentDiv);
+            responseContentDiv.style.display = 'block';
+            if (responseArea) {
+                 setTimeout(() => {
+                    responseArea.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }, 100);
+            }
+        }
+        if (aiMessageContentElement && typeof toggleChatSendButtonState === 'function') {
+            toggleChatSendButtonState(false);
+        }
+        return fullResponseText; // Return the complete text
+
+    } catch (error) {
+        if (spinnerContainer && !aiMessageContentElement) spinnerContainer.style.display = 'none';
+        console.error("Fetch Error in callGeminiAPI:", error);
+        const displayError = "Error: Could not get response from AI. " + error.message;
+        if (aiMessageContentElement) {
+            const parentMsgDiv = aiMessageContentElement.closest('.message');
+            if (parentMsgDiv) {
+                const thinkingIndicator = parentMsgDiv.querySelector('.thinking-indicator');
+                if(thinkingIndicator) thinkingIndicator.remove();
+            }
+            aiMessageContentElement.innerHTML = marked.parse(displayError);
+            if (parentMsgDiv) parentMsgDiv.classList.add('error-message');
+        } else if (responseContentDiv) { // Fallback for main page
+            responseContentDiv.innerText = "Failed to fetch response. Please check your connection or API key. \n" + error.message;
+            responseContentDiv.style.color = 'var(--google-red)';
+            responseContentDiv.style.display = 'block';
+        }
+        if (aiMessageContentElement && typeof toggleChatSendButtonState === 'function') {
+            toggleChatSendButtonState(false);
+        }
+        return null;
+    }
+}
+
+// REMOVING DUPLICATE/OLD callGeminiAPI functions and createRipple
+// The version of callGeminiAPI above this comment (taking aiMessageContentElement) is the one to keep.
+// The createRipple function is also defined multiple times. Keep one.
+
+function createRipple(event) {
+    const button = event.currentTarget;
+
+    const ripple = document.createElement("span");
+    const diameter = Math.max(button.clientWidth, button.clientHeight);
+    const radius = diameter / 2;
+
+    ripple.style.width = ripple.style.height = `${diameter}px`;
+    // Get click position relative to the button
+    const rect = button.getBoundingClientRect();
+    ripple.style.left = `${event.clientX - rect.left - radius}px`;
+    ripple.style.top = `${event.clientY - rect.top - radius}px`;
+
+    ripple.classList.add("ripple");
+
+    // Check if there's an old ripple and remove it (though with timeout this might not be strictly necessary)
+    const oldRipple = button.querySelector(".ripple");
+    if (oldRipple) {
+        oldRipple.remove();
+    }
+
+    button.appendChild(ripple);
+
+    // Remove ripple after animation
+    setTimeout(() => {
+        if (ripple.parentElement) { // Check if still part of DOM
+            ripple.remove();
+        }
+    }, 600); // Match animation duration
+}
+
+// End of the primary callGeminiAPI and createRipple.
+// The duplicate/older versions below this point will be removed by the diff.
+
+// Existing script content follows...
+document.querySelectorAll('.action-button, .model-selector, .send-button, .legacy-search-link').forEach(button => {
+        button.addEventListener('click', (e) => {
+        // Apply ripple to specific button types
+        if (button.classList.contains('action-button') ||
+            button.classList.contains('send-button') ||
+            button.classList.contains('model-selector')) {
+            createRipple(e);
+        }
+
+        e.preventDefault(); // Keep this early
+
+        const askAnythingDiv = document.querySelector('.ask-anything-text');
+        const inputText = askAnythingDiv.innerText.trim();
+
+        // Search button (fa-globe)
+        if (button.classList.contains('action-button') && button.querySelector('i.fa-globe')) {
+            isSearchModeActive = !isSearchModeActive;
+            button.classList.toggle('search-button-active');
+            console.log("Search mode toggled:", isSearchModeActive);
+        }
+        // Think button & Send button on Initial Prompt Screen
+        else if (
+            (button.classList.contains('action-button') && button.querySelector('i.fa-lightbulb')) || // Think button
+            (button.classList.contains('send-button') && !document.body.classList.contains('chat-active')) // Send button on initial prompt screen
+        ) {
+            /*
+            const askAnythingDiv = document.querySelector('.ask-anything-text');
+            const currentInputText = askAnythingDiv.innerText.trim();
+
+            if (!currentInputText && !currentImageData) {
+                alert("Please enter something or attach an image.");
+                console.log("Initial prompt: Input and attachment are empty, not calling API.");
+                return;
+            }
+
+            const isThinkButton = button.querySelector('i.fa-lightbulb');
+            const thinkingBudget = isThinkButton ? 24576 : 0;
+            const originalUserQuery = currentInputText;
+            let apiInputText = originalUserQuery;
+            let enableSearch = isSearchModeActive;
+            const isCrypto = isCryptoQuery(originalUserQuery);
+
+            if (isCrypto) {
+                enableSearch = true;
+                apiInputText = `"User is asking about a specific cryptocurrency. Please use your search tool to find the latest information and provide the data in the following format (if available, otherwise omit the field). Do not make up data; if a field is not found, state 'Data not available'. Respond ONLY with the structured data, followed by any additional commentary if necessary. Format:
+Coin Name (Symbol)
+- Current Price: $X
+- Market Cap: $X
+- 24h Trading Volume: $X
+- Price Change (24h): X%
+- All-Time High: $X (on YYYY-MM-DD)
+- Percent from ATH: X%
+- Total Supply: X SYMBOL
+- Max Supply: X SYMBOL
+Key Price Movements:
+- 1 Hour Change: X%
+- 24 Hour Change: X%
+- 7 Day Change: X%
+- 30 Day Change: X%
+- 1 Year Change: X%
+- Future Unlocks: Info
+
+User query: "${originalUserQuery}"`;
+                console.log("Crypto query detected, modified prompt for API and enabled search.");
+            }
+
+            console.log(`${isThinkButton ? "Think" : "Initial Send"} Button: Processing initial prompt...`);
+
+            (async () => {
+                try {
+                    const newSession = await createNewChatSessionInDB();
+                    if (!newSession || !newSession.sessionId) {
+                        console.error("Failed to create and retrieve new session from DB for initial prompt.");
+                        alert("Error starting a new chat. Please try again or refresh.");
+                        return;
+                    }
+                    currentChatSessionId = newSession.sessionId;
+
+                    addOrUpdateChatHistoryUI(currentChatSessionId, newSession.chatTitle, true);
+
+                    showChatView();
+                    renderMessage('user', originalUserQuery);
+
+                    await saveMessageToSession(currentChatSessionId, 'user', originalUserQuery);
+
+                    const aiMessageContentElement = renderMessage('ai', '', true);
+
+                    if (currentImageData && apiInputText.includes(originalUserQuery)) {
+                         // Image handled by global currentImageData in callGeminiAPI
+                    }
+
+                    const fullResponseText = await callGeminiAPI(apiInputText, thinkingBudget, enableSearch, aiMessageContentElement);
+
+                    if (fullResponseText && aiMessageContentElement) {
+                        if (isCrypto) {
+                            const structuredHtml = parseAndFormatCryptoData(fullResponseText);
+                            if (structuredHtml) {
+                                aiMessageContentElement.innerHTML = structuredHtml;
+                                addCopyButtonsToCodeBlocks(aiMessageContentElement);
+                            } else {
+                                aiMessageContentElement.innerHTML = marked.parse(fullResponseText);
+                                addCopyButtonsToCodeBlocks(aiMessageContentElement);
+                            }
+                        } else {
+                            aiMessageContentElement.innerHTML = marked.parse(fullResponseText);
+                            addCopyButtonsToCodeBlocks(aiMessageContentElement);
+                        }
+                        const messageList = document.getElementById('message-list');
+                        if (messageList) messageList.scrollTop = messageList.scrollHeight; // Scroll after content update
+                        await saveMessageToSession(currentChatSessionId, 'ai', fullResponseText);
+
+                    } else if (!fullResponseText && aiMessageContentElement) {
+                        // Handle case where API call might have resolved but with no text (e.g. error handled inside callGeminiAPI)
+                        // If aiMessageContentElement still shows thinking, replace it.
+                        const thinkingIndicator = aiMessageContentElement.querySelector('.thinking-indicator');
+                        if (thinkingIndicator) {
+                            aiMessageContentElement.innerHTML = "Failed to get a response. Please try again.";
+                            const messageBubble = aiMessageContentElement.closest('.message');
+                            if(messageBubble) messageBubble.classList.add('error-message');
+                        }
+                    }
+
+                    if (!isThinkButton) {
+                        if(askAnythingDiv) askAnythingDiv.innerText = '';
+                        clearAttachedImage(); // Clear global image data and preview
+                    }
+
+                } catch (error) {
+                    console.error("Error during initial prompt submission:", error);
+                    alert("Error processing your request: " + error.message);
+                    // If chat view is active, show error there, otherwise it might be confusing
+                    if (document.body.classList.contains('chat-active') && currentChatSessionId) {
+                         renderMessage('system', "Failed to process your request. Please try again.", false, true);
+                    }
+                }
+            })();
+        }
+            (button.classList.contains('send-button') && !document.body.classList.contains('chat-active')) // Send button on initial prompt screen
+        ) {
+            /*
+            const askAnythingDiv = document.querySelector('.ask-anything-text');
+            const currentInputText = askAnythingDiv.innerText.trim();
+
+            if (!currentInputText && !currentImageData) {
+                alert("Please enter something or attach an image.");
+                console.log("Initial prompt: Input and attachment are empty, not calling API.");
+                return;
+            }
+
+            const isThinkButton = button.querySelector('i.fa-lightbulb');
+            const thinkingBudget = isThinkButton ? 24576 : 0;
+            const originalUserQuery = currentInputText;
+            let apiInputText = originalUserQuery;
+            let enableSearch = isSearchModeActive;
+            const isCrypto = isCryptoQuery(originalUserQuery);
+
+            if (isCrypto) {
+                enableSearch = true;
+                apiInputText = `"User is asking about a specific cryptocurrency. Please use your search tool to find the latest information and provide the data in the following format (if available, otherwise omit the field). Do not make up data; if a field is not found, state 'Data not available'. Respond ONLY with the structured data, followed by any additional commentary if necessary. Format:
+Coin Name (Symbol)
+- Current Price: $X
+- Market Cap: $X
+- 24h Trading Volume: $X
+- Price Change (24h): X%
+- All-Time High: $X (on YYYY-MM-DD)
+- Percent from ATH: X%
+- Total Supply: X SYMBOL
+- Max Supply: X SYMBOL
+Key Price Movements:
+- 1 Hour Change: X%
+- 24 Hour Change: X%
+- 7 Day Change: X%
+- 30 Day Change: X%
+- 1 Year Change: X%
+- Future Unlocks: Info
+
+User query: "${originalUserQuery}"`;
+                console.log("Crypto query detected, modified prompt for API and enabled search.");
+            }
+
+            console.log(`${isThinkButton ? "Think" : "Initial Send"} Button: Processing initial prompt...`);
+
+            (async () => {
+                try {
+                    const newSession = await createNewChatSessionInDB();
+                    if (!newSession || !newSession.sessionId) {
+                        console.error("Failed to create and retrieve new session from DB for initial prompt.");
+                        alert("Error starting a new chat. Please try again or refresh.");
+                        return;
+                    }
+                    currentChatSessionId = newSession.sessionId;
+
+                    addOrUpdateChatHistoryUI(currentChatSessionId, newSession.chatTitle, true);
+
+                    showChatView();
+                    renderMessage('user', originalUserQuery);
+
+                    await saveMessageToSession(currentChatSessionId, 'user', originalUserQuery);
+
+                    const aiMessageContentElement = renderMessage('ai', '', true);
+
+                    if (currentImageData && apiInputText.includes(originalUserQuery)) {
+                        clearAttachedImage();
+                    }
+
+                    const fullResponseText = await callGeminiAPI(apiInputText, thinkingBudget, enableSearch, aiMessageContentElement);
+
+                    if (fullResponseText && aiMessageContentElement) {
+                        if (isCrypto) {
+                            const structuredHtml = parseAndFormatCryptoData(fullResponseText);
+                            if (structuredHtml) {
+                                aiMessageContentElement.innerHTML = structuredHtml;
+                                addCopyButtonsToCodeBlocks(aiMessageContentElement);
+                            } else {
+                                aiMessageContentElement.innerHTML = marked.parse(fullResponseText);
+                                addCopyButtonsToCodeBlocks(aiMessageContentElement);
+                            }
+                        } else {
+                            aiMessageContentElement.innerHTML = marked.parse(fullResponseText);
+                            addCopyButtonsToCodeBlocks(aiMessageContentElement);
+                        }
+                        const messageList = document.getElementById('message-list');
+                        if (messageList) messageList.scrollTop = messageList.scrollHeight;
+                        await saveMessageToSession(currentChatSessionId, 'ai', fullResponseText);
+                    } else if (!fullResponseText && aiMessageContentElement) {
+                        aiMessageContentElement.innerHTML = "Failed to get a response. Please try again.";
+                        const messageBubble = aiMessageContentElement.closest('.message');
+                        if(messageBubble) messageBubble.classList.add('error-message');
+                    }
+
+                    if (!isThinkButton) {
+                        if(askAnythingDiv) askAnythingDiv.innerText = '';
+                        // currentImageData is cleared by clearAttachedImage() if it was used for the prompt.
+                        // If it wasn't used (e.g. text-only prompt), it might still be set.
+                        // So, explicitly clear it here if not a "Think" action.
+                        clearAttachedImage();
+                    }
+
+                } catch (error) {
+                    console.error("Error during initial prompt submission:", error);
+                    alert("Error processing your request: " + error.message);
+                    if (document.body.classList.contains('chat-active')) {
+                         renderMessage('system', "Failed to process your request. Please try again.", false, true);
+                    }
+                }
+            })();
+        }
+            (button.classList.contains('send-button') && !document.body.classList.contains('chat-active')) // Send button on initial prompt screen
+        ) {
+            const askAnythingDiv = document.querySelector('.ask-anything-text'); // Ensure we get fresh inputText here too
+            const inputText = askAnythingDiv.innerText.trim(); // Re-fetch inputText for this specific handler block
+
+            if (!inputText && !currentImageData) {
+                alert("Please enter something or attach an image.");
+                console.log("Initial prompt: Input and attachment are empty, not calling API.");
+                return;
+            }
+
+            const isThinkButton = button.querySelector('i.fa-lightbulb');
+            const thinkingBudget = isThinkButton ? 24576 : 0;
+            const originalUserQuery = inputText; // Store the original input for saving and display
+            let apiInputText = originalUserQuery; // This will be sent to the API (potentially modified for crypto)
+            let enableSearch = isSearchModeActive;
+            const isCrypto = isCryptoQuery(originalUserQuery);
+
+            if (isCrypto) {
+                enableSearch = true;
+                apiInputText = `"User is asking about a specific cryptocurrency. Please use your search tool to find the latest information and provide the data in the following format (if available, otherwise omit the field). Do not make up data; if a field is not found, state 'Data not available'. Respond ONLY with the structured data, followed by any additional commentary if necessary. Format:
+Coin Name (Symbol)
+- Current Price: $X
+- Market Cap: $X
+- 24h Trading Volume: $X
+- Price Change (24h): X%
+- All-Time High: $X (on YYYY-MM-DD)
+- Percent from ATH: X%
+- Total Supply: X SYMBOL
+- Max Supply: X SYMBOL
+Key Price Movements:
+- 1 Hour Change: X%
+- 24 Hour Change: X%
+- 7 Day Change: X%
+- 30 Day Change: X%
+- 1 Year Change: X%
+- Future Unlocks: Info
+
+User query: "${originalUserQuery}"`;
+                console.log("Crypto query detected, modified prompt for API and enabled search.");
+            }
+
+            console.log(`${isThinkButton ? "Think" : "Initial Send"} Button: Processing initial prompt...`);
+
+            (async () => {
+                try {
+                    const newSession = await createNewChatSessionInDB();
+                    if (!newSession || !newSession.sessionId) {
+                        throw new Error("Failed to create and retrieve new session from DB for initial prompt.");
+                    }
+                    currentChatSessionId = newSession.sessionId;
+
+                    addOrUpdateChatHistoryUI(currentChatSessionId, newSession.chatTitle, true);
+
+                    showChatView();
+                    renderMessage('user', originalUserQuery);
+
+                    await saveMessageToSession(currentChatSessionId, 'user', originalUserQuery);
+
+                    const aiMessageContentElement = renderMessage('ai', '', true);
+
+                    if (currentImageData && apiInputText.includes(originalUserQuery)) {
+                        clearAttachedImage();
+                    }
+
+                    const fullResponseText = await callGeminiAPI(apiInputText, thinkingBudget, enableSearch, aiMessageContentElement);
+                .then(fullResponseText => {
+                    if (fullResponseText && aiMessageContentElement) {
+                        // Try to parse for crypto data after full response
+                        if (isCrypto) {
+                            const structuredHtml = parseAndFormatCryptoData(fullResponseText);
+                            if (structuredHtml) {
+                                aiMessageContentElement.innerHTML = structuredHtml;
+                                // Ensure copy buttons are added if code blocks exist in structuredHTML (though unlikely for this card)
+                                addCopyButtonsToCodeBlocks(aiMessageContentElement);
+                            } else {
+                                // If parsing fails, stick to markdown rendering of the full response
+                                aiMessageContentElement.innerHTML = marked.parse(fullResponseText);
+                                addCopyButtonsToCodeBlocks(aiMessageContentElement);
+                            }
+                        } else {
+                             // Default markdown rendering for non-crypto queries (already handled by streaming in callGeminiAPI)
+                             // but ensure final content is set if not fully handled by stream due to partial parsing
+                            aiMessageContentElement.innerHTML = marked.parse(fullResponseText);
+                            addCopyButtonsToCodeBlocks(aiMessageContentElement);
+                        }
+                        // Ensure message list scrolls with new content
+                        const messageList = document.getElementById('message-list');
+                        if (messageList) messageList.scrollTop = messageList.scrollHeight;
+
+                        saveMessageToSession(currentChatSessionId, 'ai', fullResponseText) // Save the raw AI response
+                            .then(() => console.log("AI response saved to session:", currentChatSessionId))
+                            .catch(err => console.error("Error saving AI response:", err));
+                    }
+                })
+                .catch(error => {
+                    console.error("Error calling Gemini API from initial prompt:", error);
+                    if (aiMessageContentElement) {
+                        aiMessageContentElement.textContent = "Error fetching response. Please try again.";
+                    }
+                });
+
+            if (!isThinkButton) {
+                askAnythingDiv.innerText = '';
+                clearAttachedImage();
+            }
+        }
+        */
+        console.log("Initial Send/Think button original logic (second instance) now commented out.");
+    }
+        */
+        console.log("Initial Send/Think button original logic now commented out. New handlers will take over."); // New placeholder
+    }
+            (button.classList.contains('send-button') && !document.body.classList.contains('chat-active')) // Send button on initial prompt screen
+        ) {
+            /*
+            const askAnythingDiv = document.querySelector('.ask-anything-text'); // Ensure we get fresh inputText here too
+            const inputText = askAnythingDiv.innerText.trim(); // Re-fetch inputText for this specific handler block
+
+            if (!inputText && !currentImageData) {
+                alert("Please enter something or attach an image.");
+                console.log("Initial prompt: Input and attachment are empty, not calling API.");
+                return;
+            }
+
+            const isThinkButton = button.querySelector('i.fa-lightbulb');
+            const thinkingBudget = isThinkButton ? 24576 : 0;
+            const originalUserQuery = inputText; // Store the original input for saving and display
+            let apiInputText = originalUserQuery; // This will be sent to the API (potentially modified for crypto)
+            let enableSearch = isSearchModeActive;
+            const isCrypto = isCryptoQuery(originalUserQuery);
+
+            if (isCrypto) {
+                enableSearch = true;
+                apiInputText = `"User is asking about a specific cryptocurrency. Please use your search tool to find the latest information and provide the data in the following format (if available, otherwise omit the field). Do not make up data; if a field is not found, state 'Data not available'. Respond ONLY with the structured data, followed by any additional commentary if necessary. Format:
+Coin Name (Symbol)
+- Current Price: $X
+- Market Cap: $X
+- 24h Trading Volume: $X
+- Price Change (24h): X%
+- All-Time High: $X (on YYYY-MM-DD)
+- Percent from ATH: X%
+- Total Supply: X SYMBOL
+- Max Supply: X SYMBOL
+Key Price Movements:
+- 1 Hour Change: X%
+- 24 Hour Change: X%
+- 7 Day Change: X%
+- 30 Day Change: X%
+- 1 Year Change: X%
+- Future Unlocks: Info
+
+User query: "${originalUserQuery}"`;
+                console.log("Crypto query detected, modified prompt for API and enabled search.");
+            }
+
+            console.log(`${isThinkButton ? "Think" : "Initial Send"} Button: Processing initial prompt...`);
+
+            (async () => {
+                try {
+                    const newSession = await createNewChatSessionInDB();
+                    if (!newSession || !newSession.sessionId) {
+                        throw new Error("Failed to create and retrieve new session from DB for initial prompt.");
+                    }
+                    currentChatSessionId = newSession.sessionId;
+
+                    addOrUpdateChatHistoryUI(currentChatSessionId, newSession.chatTitle, true);
+
+                    showChatView();
+                    renderMessage('user', originalUserQuery);
+
+                    await saveMessageToSession(currentChatSessionId, 'user', originalUserQuery);
+
+                    const aiMessageContentElement = renderMessage('ai', '', true);
+
+                    if (currentImageData && apiInputText.includes(originalUserQuery)) {
+                        clearAttachedImage();
+                    }
+
+                    const fullResponseText = await callGeminiAPI(apiInputText, thinkingBudget, enableSearch, aiMessageContentElement);
+                .then(fullResponseText => {
+                    if (fullResponseText && aiMessageContentElement) {
+                        // Try to parse for crypto data after full response
+                        if (isCrypto) {
+                            const structuredHtml = parseAndFormatCryptoData(fullResponseText);
+                            if (structuredHtml) {
+                                aiMessageContentElement.innerHTML = structuredHtml;
+                                // Ensure copy buttons are added if code blocks exist in structuredHTML (though unlikely for this card)
+                                addCopyButtonsToCodeBlocks(aiMessageContentElement);
+                            } else {
+                                // If parsing fails, stick to markdown rendering of the full response
+                                aiMessageContentElement.innerHTML = marked.parse(fullResponseText);
+                                addCopyButtonsToCodeBlocks(aiMessageContentElement);
+                            }
+                        } else {
+                             // Default markdown rendering for non-crypto queries (already handled by streaming in callGeminiAPI)
+                             // but ensure final content is set if not fully handled by stream due to partial parsing
+                            aiMessageContentElement.innerHTML = marked.parse(fullResponseText);
+                            addCopyButtonsToCodeBlocks(aiMessageContentElement);
+                        }
+                        // Ensure message list scrolls with new content
+                        const messageList = document.getElementById('message-list');
+                        if (messageList) messageList.scrollTop = messageList.scrollHeight;
+
+                        saveMessageToSession(currentChatSessionId, 'ai', fullResponseText) // Save the raw AI response
+                            .then(() => console.log("AI response saved to session:", currentChatSessionId))
+                            .catch(err => console.error("Error saving AI response:", err));
+                    }
+                })
+                .catch(error => {
+                    console.error("Error calling Gemini API from initial prompt:", error);
+                    if (aiMessageContentElement) {
+                        aiMessageContentElement.textContent = "Error fetching response. Please try again.";
+                    }
+                });
+
+            if (!isThinkButton) {
+                askAnythingDiv.innerText = '';
+                clearAttachedImage();
+            }
+        }
+        */
+        console.log("Initial Send/Think button original logic (third instance) now commented out.");
+    }
+        // Attach button (fa-paperclip)
+        else if (button.classList.contains('action-button') && button.querySelector('i.fa-paperclip')) {
+            const imageUploadInput = document.getElementById('image-upload-input');
+            if (imageUploadInput) {
+                imageUploadInput.click(); // Trigger file picker dialog
+            } else {
+                console.error("Image upload input element not found!");
+            }
+        }
+        // Model selector
+        else if (button.classList.contains('model-selector')) {
+            const dropdown = document.getElementById('model-dropdown-list');
+            if (dropdown) {
+                const isVisible = dropdown.style.display === 'block';
+                dropdown.style.display = isVisible ? 'none' : 'block';
+                console.log("Model dropdown toggled:", !isVisible);
+            }
+        }
+        // Legacy search link
+        else if (button.classList.contains('legacy-search-link')) {
+            alert("This would redirect to legacy Google Search in a real implementation.");
+        }
+    });
+});
+
+// --- End Query Complexity Analysis ---
+
+// Function to handle initial prompt submission (for new Send and Think buttons)
+async function handleInitialPromptSubmit(event, isThinkAction = false) {
+    event.preventDefault();
+    const button = event.currentTarget;
+    if (button) button.disabled = true;
+
+    console.log(`handleInitialPromptSubmit called. isThinkAction: ${isThinkAction}`);
+
+    const askAnythingDiv = document.querySelector('.ask-anything-text');
+    if (!askAnythingDiv) {
+        console.error(".ask-anything-text element not found for initial prompt.");
+        alert("Critical error: Input field not found.");
+        return;
+    }
+    const originalUserQuery = askAnythingDiv.innerText.trim();
+
+    if (!originalUserQuery && !currentImageData) {
+        alert("Please enter something or attach an image.");
+        return;
+    }
+
+    const thinkingBudget = isThinkAction ? 24576 : 0;
+    let apiInputText = originalUserQuery;
+    let enableSearch = isSearchModeActive;
+    const isCrypto = isCryptoQuery(originalUserQuery);
+
+    if (isCrypto) {
+        enableSearch = true;
+        apiInputText = `User is asking about a specific cryptocurrency. Please use your search tool to find the latest information and provide the data in the following format (if available, otherwise omit the field). Do not make up data; if a field is not found, state 'Data not available'. Respond ONLY with the structured data, followed by any additional commentary if necessary. Format:
+Coin Name (Symbol)
+- Current Price: $X
+- Market Cap: $X
+- 24h Trading Volume: $X
+- Price Change (24h): X%
+- All-Time High: $X (on YYYY-MM-DD)
+- Percent from ATH: X%
+- Total Supply: X SYMBOL
+- Max Supply: X SYMBOL
+Key Price Movements:
+- 1 Hour Change: X%
+- 24 Hour Change: X%
+- 7 Day Change: X%
+- 30 Day Change: X%
+- 1 Year Change: X%
+- Future Unlocks: Info
+
+User query: "${originalUserQuery}"`;
+    }
+
+    try {
+        const newSession = await createNewChatSessionInDB();
+        if (!newSession || !newSession.sessionId) {
+            throw new Error("Failed to create new session in DB for initial prompt.");
+        }
+        currentChatSessionId = newSession.sessionId;
+
+        addOrUpdateChatHistoryUI(currentChatSessionId, newSession.chatTitle, true);
+
+        showChatView();
+        renderMessage('user', originalUserQuery);
+
+        await saveMessageToSession(currentChatSessionId, 'user', originalUserQuery);
+
+        const aiMessageContentElement = renderMessage('ai', '', true); // thinking = true
+
+        const fullResponseText = await callGeminiAPI(apiInputText, thinkingBudget, enableSearch, aiMessageContentElement);
+
+        if (fullResponseText && aiMessageContentElement) {
+            if (isCrypto) {
+                const structuredHtml = parseAndFormatCryptoData(fullResponseText);
+                if (structuredHtml) {
+                    aiMessageContentElement.innerHTML = structuredHtml;
+                } else {
+                    aiMessageContentElement.innerHTML = marked.parse(fullResponseText);
+                }
+            } else {
+                aiMessageContentElement.innerHTML = marked.parse(fullResponseText);
+            }
+            addCopyButtonsToCodeBlocks(aiMessageContentElement);
+
+            const messageList = document.getElementById('message-list');
+            if (messageList) messageList.scrollTop = messageList.scrollHeight;
+
+            await saveMessageToSession(currentChatSessionId, 'ai', fullResponseText);
+        } else if (!fullResponseText && aiMessageContentElement) {
+            const thinkingIndicator = aiMessageContentElement.querySelector('.thinking-indicator');
+            if (thinkingIndicator) {
+                aiMessageContentElement.innerHTML = marked.parse("Failed to get a response. Please try again.");
+                const messageBubble = aiMessageContentElement.closest('.message');
+                if(messageBubble) messageBubble.classList.add('error-message');
+            }
+        }
+
+        if (!isThinkAction) {
+            askAnythingDiv.innerText = '';
+            clearAttachedImage();
+        }
+    } catch (error) {
+        console.error("Error during initial prompt submission (handleInitialPromptSubmit):", error);
+        alert("Error processing your request: " + error.message);
+        if (document.body.classList.contains('chat-active') && currentChatSessionId) {
+             renderMessage('system', "Failed to process your request. Please try again.", false, true);
+        }
+    } finally {
+        if (button) button.disabled = false;
+    }
+}
+
+const availableModels = [
+    {
+        id: "gemini-2.5-flash-preview-05-20",
+        label: "Aegis Core Pro",
+        capabilities: { think: true, search: true, attach: true }
+    },
+    {
+        id: "gemini-2.0-flash",
+        label: "Aegis Core",
+        capabilities: { think: false, search: true, attach: true }
+    },
+    {
+        id: "gemini-2.0-flash-lite",
+        label: "Aegis Lite",
+        shortLabel: "Aegis Lite",
+        capabilities: { think: false, search: false, attach: true }
+    }
+];
+const GEMINI_API_KEY = "AIzaSyCL0lyAzof7p-R8d8QhExCwNWiZE0WiaXQ";
+
+// Initialize Marked.js options
+if (typeof marked !== 'undefined') {
+    marked.setOptions({
+        gfm: true,          // Enable GitHub Flavored Markdown
+        breaks: false,       // CHANGED FROM true
+        pedantic: false     // Be less strict about Markdown syntax
+        // Note: `sanitize` option is deprecated. For robust sanitization, an external library
+        // like DOMPurify would be needed in conjunction with Marked.js.
+        // Relying on Marked.js's default escaping for now.
+    });
+} else {
+    console.error("Marked.js library not loaded. Markdown rendering will not be available.");
+}
+
+// The above key is now set. The placeholder comment below can be removed or kept for reference.
+// Assume GEMINI_API_KEY will be set globally, e.g.
+// const GEMINI_API_KEY = "YOUR_ACTUAL_API_KEY"; // Needs to be set by the user/environment
+
+function updateButtonCapabilities(capabilities) {
+    const thinkButton = document.querySelector('.action-button i.fa-lightbulb')?.closest('.action-button');
+    const searchButton = document.querySelector('.action-button i.fa-globe')?.closest('.action-button');
+    // const attachButton = document.querySelector('.action-button i.fa-paperclip')?.closest('.action-button');
+
+    if (thinkButton) {
+        thinkButton.disabled = !capabilities.think;
+    }
+    if (searchButton) {
+        searchButton.disabled = !capabilities.search;
+        if (!capabilities.search && isSearchModeActive) {
+            isSearchModeActive = false;
+            searchButton.classList.remove('search-button-active');
+            console.log("Search mode deactivated due to model change not supporting search.");
+        }
+    }
+    // if (attachButton) { // Example for attach capability
+    //     attachButton.disabled = !capabilities.attach;
+    // }
+    console.log("Button capabilities updated for current model:", capabilities);
+}
+
+function clearAttachedImage() { // Renamed and refactored
+    const imageUploadInput = document.getElementById('image-upload-input'); // Keep for resetting value
+    const attachmentPreviewArea = document.getElementById('attachment-preview-area');
+    const attachmentThumbnail = document.getElementById('attachment-thumbnail');
+
+    currentImageData = null;
+    if (attachmentPreviewArea) attachmentPreviewArea.style.display = 'none';
+    if (attachmentThumbnail) attachmentThumbnail.src = '#';
+    if (imageUploadInput) imageUploadInput.value = null;
+    console.log("Attachment cleared.");
+}
+
+// Modified to accept aiMessageContentElement for streaming
+async function callGeminiAPI(inputText, thinkingBudget = 0, enableSearchTool = false, aiMessageContentElement = null) {
+    console.log("callGeminiAPI: Received parameters", {
+        inputText: inputText,
+        thinkingBudget: thinkingBudget,
+        enableSearchTool: enableSearchTool,
+        currentImageData_global: currentImageData ? { mimeType: currentImageData.mimeType, base64Data: currentImageData.base64Data.substring(0,30) + "..."} : null,
+        aiMessageContentElementProvided: !!aiMessageContentElement
+    });
+
+    // The existing responseArea and spinnerContainer are for the initial prompt screen's API response.
+    // For chat, we'll be updating aiMessageContentElement directly.
+    // If aiMessageContentElement is NOT provided, it means we're likely in the initial prompt screen context.
+    const responseArea = !aiMessageContentElement ? document.getElementById('api-response-area') : null;
+    const spinnerContainer = responseArea ? responseArea.querySelector('.spinner-container') : null;
+    const responseContentDiv = responseArea ? responseArea.querySelector('.response-content') : null;
+
+    // Toggle send button for chat context
+    if (aiMessageContentElement && typeof toggleChatSendButtonState === 'function') {
+        toggleChatSendButtonState(true);
+    }
+
+
+    if (typeof GEMINI_API_KEY === 'undefined' || !GEMINI_API_KEY) {
+        console.error("GEMINI_API_KEY is not set. Please set it before calling the API.");
+        // Use renderMessage for chat context errors
+        if (aiMessageContentElement) {
+            // Remove thinking indicator from aiMessageContentElement's parent message div first
+            const parentMsgDiv = aiMessageContentElement.closest('.message');
+            if (parentMsgDiv) {
+                 const thinkingIndicator = parentMsgDiv.querySelector('.thinking-indicator');
+                 if(thinkingIndicator) thinkingIndicator.remove();
+            }
+            aiMessageContentElement.innerHTML = marked.parse("API Key is not configured. Please set it in the script.");
+            if (parentMsgDiv) parentMsgDiv.classList.add('error-message'); // Add error class to the whole bubble
+        } else if (responseContentDiv && responseArea) { // Fallback for main page
+            responseContentDiv.innerText = "API Key is not configured. Please set GEMINI_API_KEY in the script.";
+            responseContentDiv.style.color = 'var(--google-red)';
+            if(spinnerContainer) spinnerContainer.style.display = 'none';
+            responseContentDiv.style.display = 'block';
+            if(responseArea) responseArea.style.display = 'block';
+        }
+        if (aiMessageContentElement && typeof toggleChatSendButtonState === 'function') {
+            toggleChatSendButtonState(false);
+        }
+        return null;
+    }
+
+    if (responseArea && spinnerContainer && responseContentDiv && !aiMessageContentElement) {
+        responseContentDiv.innerHTML = '';
+        responseContentDiv.style.display = 'none';
+        spinnerContainer.style.display = 'flex';
+        responseArea.style.display = 'block';
+    }
+
+    let thinkingIndicatorRemoved = false;
+    if (aiMessageContentElement) { // Clear initial "..." if present
+        const initialThinkingIndicator = aiMessageContentElement.querySelector('.thinking-indicator');
+        if (initialThinkingIndicator) {
+            // We will remove it once the first actual content chunk arrives
+        } else {
+            aiMessageContentElement.innerHTML = ''; // Clear if no specific indicator found but content exists
+        }
+    }
+
+
+    const GENERATE_CONTENT_API = "streamGenerateContent"; // Ensure this is streamGenerateContent
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${currentModelId}:${GENERATE_CONTENT_API}?key=${GEMINI_API_KEY}`;
+
+    // Determine query nature for system instruction (inputText here is the potentially modified one)
+    // Note: isCryptoQuery might be called by the caller to prepend specific instructions to inputText.
+    // We call it again here on the raw inputText (if available) or the modified one to adjust system prompt.
+    // For system prompt purposes, we use the original input if available, or the passed inputText.
+    // The `inputText` parameter to `callGeminiAPI` might already be augmented for crypto queries.
+    const originalInputForSystemPrompt = inputText; // This needs to be the *original* user text for accurate classification
+                                               // This is a simplification; ideally, the calling function would pass original text separately
+                                               // if inputText is heavily modified. For now, we work with what's passed.
+
+    const isCrypto = isCryptoQuery(originalInputForSystemPrompt); // isCryptoQuery is defined elsewhere
+    const isComplex = isComplexQuery(originalInputForSystemPrompt); // isComplexQuery is defined elsewhere
+
+    let systemText = "You are Aegis Protocol, an AI-driven gateway that unites DeFi, GameFi, and Real-World Assets under a single intelligent framework. Your tasks include providing real-time token analytics, automating asset tokenization validation, and optimizing gaming economies. Uphold the principles of transparency, interpretability, and consumer protection. When offering recommendations, cite on-chain data points, market trends, and risk assessments. Always ensure users can trace how your conclusions were derived. Use proper markdown formatting including headings, lists, code blocks, tables, and other formatting elements.";
+
+    if (isCrypto) {
+        // The detailed crypto prompt is prepended to inputText by the caller.
+        // The system instruction can be slightly more general here, or reinforce search.
+        systemText += " The user is asking about cryptocurrencies. Prioritize using search tools for the latest data if specific coin information is requested. Ensure data accuracy.";
+        console.log("callGeminiAPI: System instruction adapted for Crypto query.");
+    } else if (isComplex) {
+        systemText += " The user is asking a complex question. Provide a thorough, detailed, and analytical response. Break down concepts clearly and use examples if helpful. Structure your answer logically.";
+        console.log("callGeminiAPI: System instruction adapted for Complex query.");
+    } else {
+        // General casual conversation or simple question
+        systemText += " The user is asking a general question. Provide a concise and to-the-point response. Avoid unnecessary jargon unless explained.";
+        console.log("callGeminiAPI: System instruction adapted for General query.");
+    }
+
+    const requestBody = {
+        contents: [{ role: "user", parts: [] }],
+        generationConfig: {
+            thinkingConfig: {
+                thinkingBudget: thinkingBudget,
+            },
+            temperature: 0.7,
+            topP: 0.8,
+            topK: 40,
+            maxOutputTokens: 8192,
+            responseMimeType: "text/plain",
+        },
+        systemInstruction: {
+            parts: [{ text: systemText }]
+        }
+    };
+
+    if (enableSearchTool) {
+        requestBody.tools = [ { "urlContext": {} }, { "googleSearch": {} } ];
+    }
+
+    const parts = [];
+    // inputText here is the one passed to the function, which might already include crypto-specific instructions.
+    let textToSend = inputText || "";
+
+    if (currentImageData && currentImageData.base64Data && currentImageData.mimeType) {
+        parts.push({ text: textToSend });
+        parts.push({
+            inline_data: {
+                mime_type: currentImageData.mimeType,
+                data: currentImageData.base64Data
+            }
+        });
+        console.log(`callGeminiAPI: Preparing multimodal request with model: ${currentModelId}`, { text: inputText, imageMime: currentImageData.mimeType });
+    } else if (inputText) {
+        parts.push({ text: textToSend });
+    }
+
+    if (parts.length === 0) {
+        console.error("No content (text or image) to send to API.");
+        if (aiMessageContentElement) {
+            aiMessageContentElement.textContent = "Cannot send empty message.";
+        } else if (responseContentDiv && responseArea && spinnerContainer) {
+            responseContentDiv.innerText = "Please provide text or an image to send.";
+            responseContentDiv.style.color = 'var(--google-red)';
+            if(spinnerContainer) spinnerContainer.style.display = 'none';
+            responseContentDiv.style.display = 'block';
+            if(responseArea) responseArea.style.display = 'block';
+        }
+        return null;
+    }
+    requestBody.contents[0].parts = parts;
+    // Reduce console noise for full request body, especially with images.
+    // console.log("callGeminiAPI: Full requestBody for API", JSON.stringify(requestBody, null, 2));
+
+
+    let fullResponseText = ""; // To accumulate the full response for saving
+
+    try {
+        const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(requestBody),
+        });
+
+        if (spinnerContainer && !aiMessageContentElement) spinnerContainer.style.display = 'none';
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error("API Error in callGeminiAPI:", response.status, errorText);
+            const displayError = `Error: Could not get response from AI. Status: ${response.status}. ${errorText ? errorText.substring(0,100) : ''}`;
+            if (aiMessageContentElement) {
+                // If aiMessageContentElement was passed, it implies we are in chat view.
+                // renderMessage will create a new bubble. We need to update the existing one or replace it.
+                // For simplicity, let's assume aiMessageContentElement is the content div of an existing bubble.
+                 const parentMsgDiv = aiMessageContentElement.closest('.message');
+                 if (parentMsgDiv) {
+                    const thinkingIndicator = parentMsgDiv.querySelector('.thinking-indicator');
+                    if(thinkingIndicator) thinkingIndicator.remove();
+                 }
+                aiMessageContentElement.innerHTML = marked.parse(displayError);
+                if (parentMsgDiv) parentMsgDiv.classList.add('error-message');
+            } else if (responseContentDiv) { // Fallback for main page
+                responseContentDiv.innerText = `Sorry, something went wrong. \nError: ${response.status}. See console for details. \n${errorText}`;
+                responseContentDiv.style.color = 'var(--google-red)';
+                responseContentDiv.style.display = 'block';
+            }
+            if (aiMessageContentElement && typeof toggleChatSendButtonState === 'function') {
+                toggleChatSendButtonState(false);
+            }
+            return null;
+        }
+
+        // Handle streaming response
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let accumulatedChunks = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            accumulatedChunks += decoder.decode(value, { stream: true });
             
             // Process valid JSON chunks (Google's streaming API often sends multiple JSON objects)
             // Each valid JSON object needs to be parsed separately.
@@ -1318,6 +2415,7 @@ document.querySelectorAll('.action-button, .model-selector, .send-button, .legac
             (button.classList.contains('action-button') && button.querySelector('i.fa-lightbulb')) || // Think button
             (button.classList.contains('send-button') && !document.body.classList.contains('chat-active')) // Send button on initial prompt screen
         ) {
+            /*
             const askAnythingDiv = document.querySelector('.ask-anything-text');
             const currentInputText = askAnythingDiv.innerText.trim();
 
@@ -1645,31 +2743,9 @@ User query: "${originalUserQuery}"`;
                 clearAttachedImage();
             }
         }
-        // Attach button (fa-paperclip)
-        else if (button.classList.contains('action-button') && button.querySelector('i.fa-paperclip')) {
-            const imageUploadInput = document.getElementById('image-upload-input');
-            if (imageUploadInput) {
-                imageUploadInput.click(); // Trigger file picker dialog
-            } else {
-                console.error("Image upload input element not found!");
-            }
-        }
-        // Model selector
-        else if (button.classList.contains('model-selector')) {
-            const dropdown = document.getElementById('model-dropdown-list');
-            if (dropdown) {
-                const isVisible = dropdown.style.display === 'block';
-                dropdown.style.display = isVisible ? 'none' : 'block';
-                console.log("Model dropdown toggled:", !isVisible);
-            }
-        }
-        // Legacy search link
-        else if (button.classList.contains('legacy-search-link')) {
-            alert("This would redirect to legacy Google Search in a real implementation.");
-        }
-    });
-});
-
+        */
+        console.log("Initial Send/Think button original logic now commented out. New handlers will take over."); // New placeholder
+    }
 // Model dropdown population and handling
 document.addEventListener('DOMContentLoaded', () => {
     // Call initDB here to ensure it runs after DOM is loaded
@@ -2046,3 +3122,40 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 });
 */
+    // --- New Event Listeners for Initial Prompt Screen Buttons ---
+    console.log("Setting up new event listeners for initial prompt screen buttons...");
+
+    const initialMainSendButton = document.querySelector('.search-actions-area .action-buttons-right .send-button');
+    if (initialMainSendButton) {
+        initialMainSendButton.addEventListener('click', (event) => {
+            if (!document.body.classList.contains('chat-active')) {
+                console.log("Initial Main Send Button (new listener) clicked.");
+                handleInitialPromptSubmit(event, false); // isThinkAction = false
+            } else {
+                // This case should ideally be handled by the chat input's send button listener
+                console.log("Initial Main Send Button clicked, but chat is active. Ignoring in favor of chat send button.");
+            }
+        });
+        console.log("New listener attached to Initial Main Send Button.");
+    } else {
+        console.warn("Initial prompt Send button not found with selector '.search-actions-area .action-buttons-right .send-button'.");
+    }
+
+    const initialThinkButtonIcon = document.querySelector('.action-buttons-left .action-button i.fa-lightbulb');
+    if (initialThinkButtonIcon) {
+        const initialThinkButton = initialThinkButtonIcon.closest('.action-button');
+        if (initialThinkButton) {
+            initialThinkButton.addEventListener('click', (event) => {
+                if (!document.body.classList.contains('chat-active')) {
+                    console.log("Initial Think Button (new listener) clicked.");
+                    handleInitialPromptSubmit(event, true); // isThinkAction = true
+                }
+            });
+            console.log("New listener attached to Initial Think Button.");
+        } else {
+             console.warn("Parent .action-button for Think button icon not found.");
+        }
+    } else {
+        console.warn("Think button icon not found with selector '.action-buttons-left .action-button i.fa-lightbulb'.");
+    }
+    // --- End New Event Listeners ---
