@@ -20,6 +20,7 @@
             --text-link: #5F6368;
 
             --surface-background: #fff;
+            --page-background: #2a2a2a; /* Dark grey background */
             --search-bar-shadow: 0 1px 6px rgba(32, 33, 36, 0.20); /* Softer shadow */
 
             --button-bg: #F8F9FA;
@@ -58,6 +59,7 @@
             justify-content: center;
             padding: 20px;
             min-height: 100vh; /* Ensure body takes at least full viewport height */
+            background-color: var(--page-background);
         }
 
         .main-content {
@@ -75,10 +77,8 @@
         }
         
         .logo-image {
-            max-width: 280px;
-            max-height: 80px;
-            width: auto;
-            height: auto;
+            width: 350px;
+            height: 120px;
             object-fit: contain;
         }
 
@@ -226,14 +226,14 @@
 
         .legacy-search-link {
             font-size: clamp(12px, 2.5vw, 13px);
-            color: var(--text-link);
+            color: #b3b3b3;
             text-decoration: none;
             margin-top: 0px; /* Reduced margin from search bar */
             transition: color 0.2s ease;
         }
 
         .legacy-search-link:hover {
-            color: var(--text-primary);
+            color: #ffffff;
             text-decoration: underline;
         }
 
