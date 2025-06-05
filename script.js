@@ -5,18 +5,18 @@ let currentModelId = "gemini-2.5-flash-preview-05-20"; // Default model
 const availableModels = [
     {
         id: "gemini-2.5-flash-preview-05-20",
-        label: "Gemini 2.5 Flash",
+        label: "Aegis Core Pro",
         capabilities: { think: true, search: true, attach: true }
     },
     {
         id: "gemini-2.0-flash",
-        label: "Gemini 2.0 Flash",
+        label: "Aegis Core",
         capabilities: { think: false, search: true, attach: true }
     },
     {
         id: "gemini-2.0-flash-lite",
-        label: "Gemini 2.0 Flash-Lite",
-        shortLabel: "Gemini 2.0 F-L",
+        label: "Aegis Lite",
+        shortLabel: "Aegis Lite",
         capabilities: { think: false, search: false, attach: true }
     }
 ];

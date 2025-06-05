@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Gemini Search Interface</title>
+    <title>Aegis Protocol - DeFi & GameFi AI Gateway</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&family=Poppins:wght@500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -70,19 +70,17 @@
         }
 
         .logo {
-            font-family: var(--font-family-logo);
-            font-size: clamp(48px, 12vw, 80px); /* Responsive font size */
-            font-weight: 500; /* Google logo is not super bold */
-            letter-spacing: -0.5px; /* Slight adjustment for visual appeal */
-            margin-bottom: 10px; /* More space under logo */
+            text-align: center;
+            margin-bottom: 10px;
         }
-
-        .logo .char-g1 { color: var(--google-blue); }
-        .logo .char-o1 { color: var(--google-red); }
-        .logo .char-o2 { color: var(--google-yellow); }
-        .logo .char-g2 { color: var(--google-blue); }
-        .logo .char-l { color: var(--google-green); }
-        .logo .char-e { color: var(--google-red); }
+        
+        .logo-image {
+            max-width: 280px;
+            max-height: 80px;
+            width: auto;
+            height: auto;
+            object-fit: contain;
+        }
 
         .search-container {
             background-color: var(--surface-background);
@@ -640,7 +638,7 @@
 <body>
     <div class="main-content">
         <div class="logo">
-            <span class="char-g1">G</span><span class="char-o1">o</span><span class="char-o2">o</span><span class="char-g2">g</span><span class="char-l">l</span><span class="char-e">e</span>
+            <img src="images/AegisProtocol.png" alt="Aegis Protocol" class="logo-image">
         </div>
 
         <div class="search-container">
@@ -671,7 +669,7 @@
                 <div class="action-buttons-right">
                     <div class="model-selector-container" style="position: relative;">
                         <button class="model-selector">
-                            <span id="selected-model-label">Gemini 2.5 Flash</span> <i class="fas fa-chevron-down"></i>
+                            <span id="selected-model-label">Aegis Core Pro</span> <i class="fas fa-chevron-down"></i>
                         </button>
                         <div id="model-dropdown-list" class="model-dropdown" style="display: none;">
                             <!-- Items will be populated by JS -->
